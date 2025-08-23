@@ -43,17 +43,17 @@ Hệ thống bao gồm ba thành phần độc lập giao tiếp qua internet:
 ```
 aquaponics-mini/
 ├─ device/
-│  ├─ esp8266_ctrl/ # ESP8266: bơm/đèn + cảm biến + cảnh báo tràn
+│  ├─ esp8266_ctrl/                  # ESP8266: bơm/đèn + cảm biến + cảnh báo tràn
 │  │  ├─ esp8266_ctrl.ino
-│  │  └─ config.h # WIFI_SSID, WIFI_PASS, MQTT_HOST, ...
-│  └─ esp32cam_ai/ # ESP32-CAM: chụp ảnh, gửi server AI
+│  │  └─ config.h                     # WIFI_SSID, WIFI_PASS, MQTT_HOST, ...
+│  └─ esp32cam_ai/                   # ESP32-CAM: chụp ảnh, gửi server AI
 │     ├─ esp32cam_ai.ino
-│     └─ config.h # SERVER_URL, WIFI_*
+│     └─ config.h                     # SERVER_URL, WIFI_*
 ├─ server_ai/
-│  ├─ server.py # Flask API: /predict /last-image /last-prediction
+│  ├─ server.py                      # Flask API: /predict /last-image /last-prediction
 │  ├─ requirements.txt
-│  └─ .env.example # FLASK_PORT, TOKEN (tùy chọn)
-├─ aquaponics_mini(app_flutter)/
+│  └─ .env.example                   # FLASK_PORT, TOKEN (tùy chọn)
+├─ aquaponics_mini/                  # App Flutter
 │  ├─ pubspec.yaml
 │  └─ lib/
 │     ├─ main.dart
@@ -61,8 +61,8 @@ aquaponics-mini/
 │     ├─ services/api_service.dart
 │     └─ screens/dashboard.dart
 └─ docs/
-   ├─ topics_and_api.md # MQTT topics + REST endpoints
-   └─ wiring.md # Sơ đồ đấu nối & chân
+   ├─ topics_and_api.md             # MQTT topics + REST endpoints
+   └─ wiring.md                     # Sơ đồ đấu nối & chân
 ```
 
 ## Giao thức giao tiếp
