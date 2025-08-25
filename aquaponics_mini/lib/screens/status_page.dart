@@ -1,0 +1,73 @@
+import 'package:flutter/material.dart';
+
+class StatusPage extends StatelessWidget {
+  const StatusPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Trạng thái hệ thống'), backgroundColor: Colors.green[700]),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildSensorCard(
+              icon: Icons.thermostat,
+              title: 'Nhiệt độ',
+              value: '28°C',
+              color: Colors.orange,
+              description: 'Nhiệt độ nước hiện tại',
+            ),
+            _buildSensorCard(
+              icon: Icons.water_drop,
+              title: 'Độ ẩm',
+              value: '65%',
+              color: Colors.blue,
+              description: 'Độ ẩm không khí',
+            ),
+            _buildSensorCard(
+              icon: Icons.waves,
+              title: 'Mức nước',
+              value: 'Đầy',
+              color: Colors.teal,
+              description: 'Mức nước bể',
+            ),
+            Card(
+              color: Colors.red[50],
+              child: ListTile(
+                leading: Icon(Icons.warning, color: Colors.red),
+                title: Text('Cảnh báo'),
+                subtitle: Text('Không có cảnh báo'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSensorCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+    required String description,
+  }) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withOpacity(0.2),
+          child: Icon(icon, color: color),
+        ),
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(description),
+        trailing: Text(
+          value,
+          style: TextStyle(fontSize: 18, color: color, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+}
