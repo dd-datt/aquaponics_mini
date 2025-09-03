@@ -4,8 +4,8 @@
 
 // Pin definitions for ESP8266
 #define DHT_PIN 2          // D4 (GPIO2) - DHT22 data
-#define RELAY_PUMP_PIN 14  // D5 (GPIO14) - Relay IN1 for pump
-#define RELAY_LIGHT_PIN 12 // D6 (GPIO12) - Relay IN2 for light
+#define PUMP_PIN 14        // D5 (GPIO14) - Transistor/MOSFET for pump (3V-5V)
+#define RELAY_LIGHT_PIN 12 // D6 (GPIO12) - Relay IN2 for light (12V)
 #define FLOAT_SWITCH_PIN 13 // D7 (GPIO13) - Float switch
 
 // MQTT Configuration
@@ -20,7 +20,7 @@
 #define WIFI_PASSWORD "0123456789"
 
 // Timing
-#define PUBLISH_INTERVAL 5000  // Publish status every 5 seconds
+#define PUBLISH_INTERVAL 100   // Publish status every 0.1 second (100ms)
 #define RECONNECT_INTERVAL 5000 // Reconnect MQTT every 5 seconds if disconnected
 
 // DHT sensor
@@ -43,14 +43,18 @@ unsigned long lastReconnectTime = 0;
 void testComponents() {
   Serial.println("=== Component Test ===");
 
-  // Test relays
-  Serial.println("Testing relays...");
-  digitalWrite(RELAY_PUMP_PIN, LOW);
-  delay(1000);
-  digitalWrite(RELAY_PUMP_PIN, HIGH);
-  digitalWrite(RELAY_LIGHT_PIN, LOW);
-  delay(1000);
-  digitalWrite(RELAY_LIGHT_PIN, HIGH);
+  // Test pump (transistor)
+  Serial.println("Testing pump (3V-5V)...");
+  digitalWrite(PUMP_PIN, HIGH); // Pump ON
+  delay(2000);
+  digitalWrite(PUMP_PIN, LOW); // Pump OFF
+
+  // Test light relay
+  Serial.println("Testing light relay...");
+  digitalWrite(RELAY_LIGHT_PIN, LOW); // Relay ON
+  delay(2000);
+  digitalWrite(RELAY_LIGHT_PIN, HIGH); // Relay OFF
+
   Serial.println("Relays test complete");
 
   // Test float switch
@@ -72,13 +76,13 @@ void setup() {
   delay(100);
 
   // Initialize pins
-  pinMode(RELAY_PUMP_PIN, OUTPUT);
+  pinMode(PUMP_PIN, OUTPUT);
   pinMode(RELAY_LIGHT_PIN, OUTPUT);
   pinMode(FLOAT_SWITCH_PIN, INPUT_PULLUP);
 
-  // Set relays to OFF initially
-  digitalWrite(RELAY_PUMP_PIN, HIGH); // Relay active LOW
-  digitalWrite(RELAY_LIGHT_PIN, HIGH);
+  // Set outputs to OFF initially
+  digitalWrite(PUMP_PIN, LOW); // Pump OFF (transistor)
+  digitalWrite(RELAY_LIGHT_PIN, HIGH); // Light OFF (relay active LOW)
 
   // Initialize DHT sensor
   dht.begin();
@@ -193,12 +197,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       int valueStart = message.indexOf("true", colonIndex);
       if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
         pumpState = true;
-        digitalWrite(RELAY_PUMP_PIN, LOW); // Relay ON
+        digitalWrite(PUMP_PIN, HIGH); // Pump ON (transistor HIGH)
       } else {
         int valueStart = message.indexOf("false", colonIndex);
         if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
           pumpState = false;
-          digitalWrite(RELAY_PUMP_PIN, HIGH); // Relay OFF
+          digitalWrite(PUMP_PIN, LOW); // Pump OFF (transistor LOW)
         }
       }
     }

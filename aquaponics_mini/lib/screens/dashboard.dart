@@ -28,19 +28,41 @@ class _DashboardPageState extends State<DashboardPage> {
     final mqtt = Provider.of<MqttService>(context, listen: false);
     mqtt.connect().then((_) {
       mqtt.listenStatus((msg) {
-        // Giả sử msg là JSON: {"temp":28,"humidity":65,"water":"Đầy","pump":true,"light":false}
+        print('[MQTT DEBUG] Nhận dữ liệu: $msg');
         try {
           final data = msg.contains('{') ? msg : '{}';
           final decoded = data.isNotEmpty ? Map<String, dynamic>.from(_parseJson(data)) : {};
+          print('[MQTT DEBUG] Đã parse: $decoded');
           setState(() {
             temp = decoded['temp']?.toString() ?? '--';
             humidity = decoded['humidity']?.toString() ?? '--';
-            waterLevel = decoded['water']?.toString() ?? '--';
+
+            // Xử lý water level một cách an toàn
+            var waterData = decoded['water'];
+            if (waterData != null) {
+              if (waterData is String) {
+                waterLevel = waterData;
+              } else if (waterData is bool) {
+                waterLevel = waterData ? 'Đầy' : 'Thấp';
+              } else {
+                waterLevel = waterData.toString();
+              }
+            } else {
+              waterLevel = '--';
+            }
+
             pumpOn = decoded['pump'] ?? false;
             lightOn = decoded['light'] ?? false;
             status = 'Hoạt động';
           });
-        } catch (_) {}
+        } catch (e) {
+          print('Error parsing MQTT message: $e');
+          if (mounted) {
+            setState(() {
+              status = 'Lỗi dữ liệu';
+            });
+          }
+        }
       });
     });
     _fetchImageAndLabel();
@@ -75,13 +97,16 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Card(
-              color: Colors.green[50],
+              color: _getStatusColor(),
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ListTile(
-                leading: Icon(Icons.eco, color: Colors.green),
-                title: Text('Aquaponics Mini', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Trạng thái: $status', style: TextStyle(color: Colors.green[800])),
+                leading: Icon(_getStatusIcon(), color: Colors.white),
+                title: Text(
+                  'Aquaponics Mini',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                subtitle: Text('Trạng thái: $status', style: TextStyle(color: Colors.white.withOpacity(0.9))),
               ),
             ),
             SizedBox(height: 8),
@@ -90,7 +115,7 @@ class _DashboardPageState extends State<DashboardPage> {
               children: [
                 _buildInfoChip(Icons.thermostat, '$temp°C', Colors.orange),
                 _buildInfoChip(Icons.water_drop, '$humidity%', Colors.blue),
-                _buildInfoChip(Icons.waves, waterLevel, Colors.teal),
+                _buildWaterLevelChip(),
               ],
             ),
             SizedBox(height: 16),
@@ -161,11 +186,108 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       label: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 14, // Tăng từ mặc định lên 14
+          fontFamily: 'Roboto',
+        ),
       ),
       backgroundColor: Colors.white,
       elevation: 2,
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    );
+  }
+
+  Color _getStatusColor() {
+    if (status.contains('Hoạt động')) {
+      return Colors.green[600]!;
+    } else if (status.contains('Lỗi')) {
+      return Colors.red[600]!;
+    } else if (status.contains('Đang kết nối')) {
+      return Colors.orange[600]!;
+    } else {
+      return Colors.grey[600]!;
+    }
+  }
+
+  IconData _getStatusIcon() {
+    if (status.contains('Hoạt động')) {
+      return Icons.check_circle;
+    } else if (status.contains('Lỗi')) {
+      return Icons.error;
+    } else if (status.contains('Đang kết nối')) {
+      return Icons.wifi;
+    } else {
+      return Icons.help;
+    }
+  }
+
+  String _getWaterLevelTooltip(String displayText) {
+    if (displayText.contains('Chưa có dữ liệu')) {
+      return 'Đang chờ dữ liệu từ cảm biến mực nước';
+    } else if (displayText.contains('Nước đầy')) {
+      return 'Mức nước an toàn - hệ thống hoạt động bình thường';
+    } else if (displayText.contains('Nước thấp')) {
+      return 'Cần thêm nước để tránh hỏng bơm và đảm bảo tưới tiêu';
+    } else {
+      return 'Trạng thái mực nước: $displayText';
+    }
+  }
+
+  Widget _buildWaterLevelChip() {
+    // Xác định màu sắc và icon dựa trên trạng thái nước
+    Color chipColor;
+    IconData waterIcon;
+    String displayText;
+
+    String sanitized = waterLevel
+        .replaceAll('Đầy', 'Day')
+        .replaceAll('Thấp', 'Thap')
+        .replaceAll('đầy', 'day')
+        .replaceAll('thấp', 'thap')
+        .replaceAll('Chưa có dữ liệu', 'Chua co du lieu')
+        .replaceAll('chưa có dữ liệu', 'chua co du lieu');
+
+    if (sanitized == '--') {
+      chipColor = Colors.grey;
+      waterIcon = Icons.help_outline;
+      displayText = 'Chua co du lieu';
+    } else if (sanitized.contains('Day') || sanitized.contains('true')) {
+      chipColor = Colors.blue[600]!;
+      waterIcon = Icons.water;
+      displayText = 'Day';
+    } else if (sanitized.contains('Thap') || sanitized.contains('false')) {
+      chipColor = Colors.orange[600]!;
+      waterIcon = Icons.water_drop_outlined;
+      displayText = 'Thap';
+    } else {
+      chipColor = Colors.teal;
+      waterIcon = Icons.waves;
+      displayText = sanitized;
+    }
+
+    return Tooltip(
+      message: _getWaterLevelTooltip(displayText),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 300),
+        child: Chip(
+          avatar: CircleAvatar(
+            backgroundColor: chipColor.withOpacity(0.2),
+            child: Icon(waterIcon, color: chipColor, size: 20),
+          ),
+          label: Text(
+            displayText,
+            style: TextStyle(color: chipColor, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Roboto'),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+          backgroundColor: Colors.white,
+          elevation: 3,
+          shadowColor: chipColor.withOpacity(0.3),
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        ),
+      ),
     );
   }
 }

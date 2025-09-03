@@ -1,0 +1,8 @@
+{
+  "dart.flutterSdkPath": "/Users/vdat319/Flutter/SDK/flutter",
+  "dart.sdkPath": "/Users/vdat319/Flutter/SDK/flutter/bin/cache/dart-sdk",
+  "flutter.hotReloadOnSave": "all",
+  "flutter.trackWidgetCreation": true,
+  "dart.debugExternalPackageLibraries": false,
+  "dart.debugSdkLibraries": false
+}
