@@ -123,8 +123,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
-                    mqtt.publishCmd('{"pump":${!pumpOn}}');
-                    setState(() => pumpOn = !pumpOn);
+                    bool newPumpState = !pumpOn;
+                    mqtt.publishCmd('{"pump":$newPumpState,"light":$lightOn}');
+                    setState(() => pumpOn = newPumpState);
                   },
                   icon: Icon(Icons.water),
                   label: Text(pumpOn ? 'Tắt Bơm' : 'Bật Bơm'),
@@ -137,8 +138,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
-                    mqtt.publishCmd('{"light":${!lightOn}}');
-                    setState(() => lightOn = !lightOn);
+                    bool newLightState = !lightOn;
+                    mqtt.publishCmd('{"pump":$pumpOn,"light":$newLightState}');
+                    setState(() => lightOn = newLightState);
                   },
                   icon: Icon(Icons.lightbulb),
                   label: Text(lightOn ? 'Tắt Đèn' : 'Bật Đèn'),

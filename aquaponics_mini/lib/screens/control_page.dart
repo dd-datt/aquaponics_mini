@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/mqtt_service.dart';
 
 class ControlPage extends StatefulWidget {
   const ControlPage({super.key});
@@ -43,7 +45,10 @@ class _ControlPageState extends State<ControlPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
-                // TODO: Gửi lệnh MQTT
+                final mqtt = Provider.of<MqttService>(context, listen: false);
+                String command = '{"pump":$pumpOn,"light":$lightOn}';
+                mqtt.publishCmd(command);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đã gửi lệnh: $command')));
               },
               icon: Icon(Icons.send),
               label: Text('Gửi trạng thái điều khiển', style: TextStyle(fontSize: 16)),
