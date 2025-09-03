@@ -248,7 +248,7 @@ void readSensors() {
   // Read float switch (LOW when water level is high - adjust logic based on your wiring)
   // If float switch is normally open: LOW = water high, HIGH = water low
   // If float switch is normally closed: HIGH = water high, LOW = water low
-  waterLevel = (digitalRead(FLOAT_SWITCH_PIN) == LOW); // true = water level high
+  waterLevel = (digitalRead(FLOAT_SWITCH_PIN) == HIGH); // true = water level high (đảo logic)
 
   Serial.print("Temperature: ");
   Serial.print(temperature);
@@ -267,7 +267,7 @@ void publishStatus() {
   String statusMessage = "{";
   statusMessage += "\"temp\":" + String(temperature) + ",";
   statusMessage += "\"humidity\":" + String(humidity) + ",";
-  statusMessage += "\"water\":\"" + String(waterLevel ? "Đầy" : "Thấp") + "\",";
+  statusMessage += "\"water\":\"" + String(waterLevel ? "FULL" : "LOW") + "\",";
   statusMessage += "\"pump\":" + String(pumpState ? "true" : "false") + ",";
   statusMessage += "\"light\":" + String(lightState ? "true" : "false");
   statusMessage += "}";

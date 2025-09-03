@@ -43,7 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
               if (waterData is String) {
                 waterLevel = waterData;
               } else if (waterData is bool) {
-                waterLevel = waterData ? 'Đầy' : 'Thấp';
+                waterLevel = waterData ? 'FULL' : 'LOW';
               } else {
                 waterLevel = waterData.toString();
               }
@@ -241,30 +241,33 @@ class _DashboardPageState extends State<DashboardPage> {
     IconData waterIcon;
     String displayText;
 
-    String sanitized = waterLevel
-        .replaceAll('Đầy', 'Day')
-        .replaceAll('Thấp', 'Thap')
-        .replaceAll('đầy', 'day')
-        .replaceAll('thấp', 'thap')
-        .replaceAll('Chưa có dữ liệu', 'Chua co du lieu')
-        .replaceAll('chưa có dữ liệu', 'chua co du lieu');
+    String normalized = waterLevel.toString().toLowerCase().trim();
 
-    if (sanitized == '--') {
+    if (normalized == '--' || normalized.isEmpty) {
       chipColor = Colors.grey;
       waterIcon = Icons.help_outline;
-      displayText = 'Chua co du lieu';
-    } else if (sanitized.contains('Day') || sanitized.contains('true')) {
+      displayText = 'NO DATA';
+    } else if (normalized.contains('full') ||
+        normalized.contains('đầy') ||
+        normalized.contains('high') ||
+        normalized == 'true' ||
+        normalized == '1') {
       chipColor = Colors.blue[600]!;
       waterIcon = Icons.water;
-      displayText = 'Day';
-    } else if (sanitized.contains('Thap') || sanitized.contains('false')) {
+      displayText = 'FULL';
+    } else if (normalized.contains('low') ||
+        normalized.contains('thấp') ||
+        normalized.contains('empty') ||
+        normalized == 'false' ||
+        normalized == '0') {
       chipColor = Colors.orange[600]!;
       waterIcon = Icons.water_drop_outlined;
-      displayText = 'Thap';
+      displayText = 'LOW';
     } else {
-      chipColor = Colors.teal;
-      waterIcon = Icons.waves;
-      displayText = sanitized;
+      // Tất cả trường hợp không xác định được => hiển thị NO DATA
+      chipColor = Colors.grey;
+      waterIcon = Icons.help_outline;
+      displayText = 'NO DATA';
     }
 
     return Tooltip(
