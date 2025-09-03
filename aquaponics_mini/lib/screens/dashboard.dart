@@ -153,7 +153,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     setState(() => pumpOn = newPumpState);
                   },
                   icon: Icon(Icons.water),
-                  label: Text(pumpOn ? 'Tắt Bơm' : 'Bật Bơm'),
+                  label: Text(pumpOn ? 'Bơm đang bật' : 'Bơm đang tắt'),
                 ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -168,7 +168,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     setState(() => lightOn = newLightState);
                   },
                   icon: Icon(Icons.lightbulb),
-                  label: Text(lightOn ? 'Tắt Đèn' : 'Bật Đèn'),
+                  label: Text(lightOn ? 'Đèn đang bật' : 'Đèn đang tắt'),
                 ),
               ],
             ),
