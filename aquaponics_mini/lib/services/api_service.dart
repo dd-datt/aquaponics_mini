@@ -8,7 +8,7 @@ class ApiService {
 
   Future<String> getLastImage() async {
     final response = await dio.get('$baseUrl/last-image');
-    return response.data['image_path'] ?? '';
+    return response.data['image'] ?? '';
   }
 
   Future<String> getLastPrediction() async {

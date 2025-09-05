@@ -7,38 +7,59 @@ class MqttService with ChangeNotifier {
   final String clientId;
   late MqttServerClient client;
   String status = '';
+  bool _connecting = false;
 
   MqttService({required this.broker, required this.clientId}) {
     client = MqttServerClient(broker, clientId);
-    client.logging(on: false);
+    client.logging(on: true);
+    client.keepAlivePeriod = 20;
     client.onConnected = onConnected;
     client.onDisconnected = onDisconnected;
     client.onSubscribed = onSubscribed;
+    client.onUnsubscribed = (topic) => debugPrint('Unsubscribed: $topic');
+    client.onSubscribeFail = (topic) => debugPrint('Subscribe failed: $topic');
+    client.pongCallback = () => debugPrint('Ping response received');
   }
 
   Future<void> connect() async {
+    if (_connecting || client.connectionStatus?.state == MqttConnectionState.connected) return;
+    _connecting = true;
+    status = 'Đang kết nối MQTT...';
+    safeNotifyListeners();
     try {
       await client.connect();
     } catch (e) {
-      status = 'Error: $e';
-      notifyListeners();
+      status = 'MQTT lỗi: $e';
+      debugPrint('MQTT connect error: $e');
+      safeNotifyListeners();
+      await Future.delayed(Duration(seconds: 3));
+      _connecting = false;
+      connect(); // thử lại tự động
+      return;
     }
+    _connecting = false;
   }
 
   void onConnected() {
-    status = 'Connected';
+    status = 'MQTT đã kết nối';
+    debugPrint('MQTT connected!');
     client.subscribe('aquaponics/status', MqttQos.atMostOnce);
-    notifyListeners();
+    safeNotifyListeners();
   }
 
   void onDisconnected() {
-    status = 'Disconnected';
-    notifyListeners();
+    status = 'MQTT đã ngắt kết nối';
+    debugPrint('MQTT disconnected!');
+    safeNotifyListeners();
+    Future.delayed(Duration(seconds: 2), () {
+      connect();
+    });
   }
 
   void onSubscribed(String topic) {
-    status = 'Subscribed $topic';
-    notifyListeners();
+    status = 'Đã subscribe $topic';
+    debugPrint('Subscribed $topic');
+    safeNotifyListeners();
   }
 
   void publishCmd(String payload) {
@@ -47,11 +68,22 @@ class MqttService with ChangeNotifier {
     client.publishMessage('aquaponics/cmd', MqttQos.atMostOnce, builder.payload!);
   }
 
+  void publishCameraCmd(String payload) {
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(payload);
+    client.publishMessage('aquaponics/camera_cmd', MqttQos.atMostOnce, builder.payload!);
+  }
+
   void listenStatus(void Function(String) onMessage) {
     client.updates?.listen((List<MqttReceivedMessage<MqttMessage>> c) {
       final recMess = c[0].payload as MqttPublishMessage;
       final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+      debugPrint('[MQTT DEBUG] Nhận dữ liệu: $pt');
       onMessage(pt);
     });
+  }
+
+  void safeNotifyListeners() {
+    Future.delayed(Duration.zero, () => notifyListeners());
   }
 }

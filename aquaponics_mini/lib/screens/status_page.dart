@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/mqtt_service.dart';
 
 class StatusPage extends StatelessWidget {
   const StatusPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final mqtt = Provider.of<MqttService>(context);
     return Scaffold(
       appBar: AppBar(title: Text('Trạng thái hệ thống'), backgroundColor: Colors.green[700]),
       body: Padding(
@@ -31,6 +34,14 @@ class StatusPage extends StatelessWidget {
               value: 'Đầy',
               color: Colors.teal,
               description: 'Mức nước bể',
+            ),
+            Card(
+              color: Colors.green[50],
+              child: ListTile(
+                leading: Icon(Icons.camera_alt, color: Colors.green),
+                title: Text('ESP32-CAM'),
+                subtitle: Text(mqtt.status.isNotEmpty ? mqtt.status : 'Chưa có trạng thái'),
+              ),
             ),
             Card(
               color: Colors.red[50],

@@ -4,8 +4,8 @@
 
 // Pin definitions for ESP8266
 #define DHT_PIN 2          // D4 (GPIO2) - DHT22 data
-#define PUMP_PIN 14        // D5 (GPIO14) - Transistor/MOSFET for pump (3V-5V)
-#define RELAY_LIGHT_PIN 12 // D6 (GPIO12) - Relay IN2 for light (12V)
+#define PUMP_PIN 12        // D6 (GPIO12) - Transistor/MOSFET for pump (3V-5V)
+#define RELAY_LIGHT_PIN 5  // D1 (GPIO5) - Relay IN2 for light (12V), active LOW
 #define FLOAT_SWITCH_PIN 13 // D7 (GPIO13) - Float switch
 
 // MQTT Configuration
@@ -20,7 +20,7 @@
 #define WIFI_PASSWORD "0123456789"
 
 // Timing
-#define PUBLISH_INTERVAL 100   // Publish status every 0.1 second (100ms)
+#define PUBLISH_INTERVAL 1000   // Publish status every 1 second
 #define RECONNECT_INTERVAL 5000 // Reconnect MQTT every 5 seconds if disconnected
 
 // DHT sensor
@@ -30,45 +30,32 @@ DHT dht(DHT_PIN, DHT22);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// Variables
+// State variables (defaults OFF)
 float temperature = 0.0;
 float humidity = 0.0;
 bool waterLevel = false;
-bool pumpState = false;
-bool lightState = false;
+bool pumpState = false;   // OFF by default
+bool lightState = false;  // OFF by default
 
 unsigned long lastPublishTime = 0;
 unsigned long lastReconnectTime = 0;
 
-void testComponents() {
-  Serial.println("=== Component Test ===");
+// Helper to set pump output (centralized mapping)
+void setPump(bool on) {
+  pumpState = on;
+  // Transistor/MOSFET: HIGH = ON, LOW = OFF
+  digitalWrite(PUMP_PIN, on ? HIGH : LOW);
+  Serial.print("Pump ");
+  Serial.println(on ? "ON" : "OFF");
+}
 
-  // Test pump (transistor)
-  Serial.println("Testing pump (3V-5V)...");
-  digitalWrite(PUMP_PIN, HIGH); // Pump ON
-  delay(2000);
-  digitalWrite(PUMP_PIN, LOW); // Pump OFF
-
-  // Test light relay
-  Serial.println("Testing light relay...");
-  digitalWrite(RELAY_LIGHT_PIN, LOW); // Relay ON
-  delay(2000);
-  digitalWrite(RELAY_LIGHT_PIN, HIGH); // Relay OFF
-
-  Serial.println("Relays test complete");
-
-  // Test float switch
-  Serial.print("Float switch state: ");
-  Serial.println(digitalRead(FLOAT_SWITCH_PIN));
-
-  // Test DHT sensor
-  Serial.print("DHT test - Temp: ");
-  Serial.print(dht.readTemperature());
-  Serial.print("°C, Humidity: ");
-  Serial.print(dht.readHumidity());
-  Serial.println("%");
-
-  Serial.println("=== Test Complete ===");
+// Helper to set light output (relay active LOW)
+void setLight(bool on) {
+  lightState = on;
+  // Relay is active LOW: LOW = ON, HIGH = OFF
+  digitalWrite(RELAY_LIGHT_PIN, on ? LOW : HIGH);
+  Serial.print("Light ");
+  Serial.println(on ? "ON" : "OFF");
 }
 
 void setup() {
@@ -80,53 +67,44 @@ void setup() {
   pinMode(RELAY_LIGHT_PIN, OUTPUT);
   pinMode(FLOAT_SWITCH_PIN, INPUT_PULLUP);
 
-  // Set outputs to OFF initially
-  digitalWrite(PUMP_PIN, LOW); // Pump OFF (transistor)
-  digitalWrite(RELAY_LIGHT_PIN, HIGH); // Light OFF (relay active LOW)
+  // Ensure outputs are OFF by default
+  digitalWrite(PUMP_PIN, LOW);        // Pump OFF
+  digitalWrite(RELAY_LIGHT_PIN, HIGH); // Light OFF (relay inactive)
 
   // Initialize DHT sensor
   dht.begin();
 
-  // Test components
-  testComponents();
-  delay(2000); // Wait for test to complete
-
-  // Connect to WiFi
+  // Connect to WiFi and MQTT
   setupWiFi();
-
-  // Only setup MQTT if WiFi is connected
-  if (WiFi.status() == WL_CONNECTED) {
-    // Setup MQTT
-    client.setServer(MQTT_BROKER, MQTT_PORT);
-    client.setCallback(mqttCallback);
-  } else {
-    Serial.println("Skipping MQTT setup due to WiFi failure");
-  }
+  client.setServer(MQTT_BROKER, MQTT_PORT);
+  client.setCallback(mqttCallback);
 }
 
 void loop() {
-  // Only handle MQTT if WiFi is connected
-  if (WiFi.status() == WL_CONNECTED) {
-    // Maintain MQTT connection
-    if (!client.connected()) {
-      if (millis() - lastReconnectTime > RECONNECT_INTERVAL) {
-        lastReconnectTime = millis();
-        reconnectMQTT();
-      }
-    }
-    client.loop();
-  } else {
-    // Try to reconnect WiFi
+  // Maintain WiFi
+  if (WiFi.status() != WL_CONNECTED) {
     if (millis() - lastReconnectTime > RECONNECT_INTERVAL) {
       lastReconnectTime = millis();
       setupWiFi();
     }
   }
 
-  // Read sensors
+  // Maintain MQTT
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!client.connected()) {
+      if (millis() - lastReconnectTime > RECONNECT_INTERVAL) {
+        lastReconnectTime = millis();
+        reconnectMQTT();
+      }
+    } else {
+      client.loop();
+    }
+  }
+
+  // Read sensors (non-blocking-ish)
   readSensors();
 
-  // Publish status periodically (only if connected)
+  // Publish status periodically
   if (WiFi.status() == WL_CONNECTED && client.connected() &&
       millis() - lastPublishTime > PUBLISH_INTERVAL) {
     publishStatus();
@@ -137,24 +115,24 @@ void loop() {
 }
 
 void setupWiFi() {
-  Serial.println("Connecting to WiFi...");
+  Serial.print("Connecting to WiFi '");
+  Serial.print(WIFI_SSID);
+  Serial.println("'...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {  // Timeout after 10 seconds
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {  // ~10s timeout
     delay(500);
     Serial.print(".");
     attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
+    Serial.println("\nWiFi connected");
+    Serial.print("IP: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("");
-    Serial.println("WiFi connection failed! Check credentials.");
+    Serial.println("\nWiFi connection failed (check credentials)");
   }
 }
 
@@ -162,107 +140,113 @@ void reconnectMQTT() {
   Serial.println("Attempting MQTT connection...");
   if (client.connect(MQTT_CLIENT_ID)) {
     Serial.println("MQTT connected");
+    // Subscribe to generic and topic-specific commands (both supported)
     client.subscribe(MQTT_CMD_TOPIC);
+    client.subscribe("aquaponics/cmd/pump");
+    client.subscribe("aquaponics/cmd/light");
   } else {
     Serial.print("MQTT connection failed, rc=");
     Serial.println(client.state());
-    // Try different client ID if connection fails
+    // try random client id once
     String clientId = String(MQTT_CLIENT_ID) + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str())) {
       Serial.println("MQTT connected with random client ID");
       client.subscribe(MQTT_CMD_TOPIC);
+      client.subscribe("aquaponics/cmd/pump");
+      client.subscribe("aquaponics/cmd/light");
     }
   }
 }
 
+// Simple, robust payload parsing for ON/OFF commands.
+// Accepts payloads like: "ON", "OFF", "1", "0", "true", "false", or JSON like "{\"pump\":true}".
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
+  String msg = "";
+  for (unsigned int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  msg.trim();
+  msg.toLowerCase();
+
+  Serial.print("MQTT msg [");
   Serial.print(topic);
-  Serial.print("] ");
+  Serial.print("]: ");
+  Serial.println(msg);
 
-  String message = "";
-  for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-  Serial.println(message);
-
-  // Parse JSON command more robustly
-  message.trim(); // Remove whitespace
-
-  // Check for pump command
-  int pumpIndex = message.indexOf("\"pump\"");
-  if (pumpIndex != -1) {
-    int colonIndex = message.indexOf(":", pumpIndex);
-    if (colonIndex != -1) {
-      int valueStart = message.indexOf("true", colonIndex);
-      if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
-        pumpState = true;
-        digitalWrite(PUMP_PIN, HIGH); // Pump ON (transistor HIGH)
-      } else {
-        int valueStart = message.indexOf("false", colonIndex);
-        if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
-          pumpState = false;
-          digitalWrite(PUMP_PIN, LOW); // Pump OFF (transistor LOW)
-        }
-      }
+  // Helper: parse boolean value that follows a specific key in the payload
+  // Returns: 1 (true/on/1), 0 (false/off/0), -1 unknown/not found
+  auto parseBoolValueAfter = [&](const String &payload, const String &key) -> int {
+    int k = payload.indexOf(key);
+    if (k == -1) return -1;
+    int colon = payload.indexOf(':', k);
+    if (colon == -1) return -1;
+    // look in the substring after the colon for known tokens until next comma/brace
+    int endPos = payload.indexOf(',', colon);
+    int bracePos = payload.indexOf('}', colon);
+    if (endPos == -1 || (bracePos != -1 && bracePos < endPos)) endPos = bracePos;
+    if (endPos == -1) endPos = payload.length();
+    String part = payload.substring(colon + 1, endPos);
+    part.trim();
+    // remove surrounding quotes if present
+    if (part.startsWith("\"") && part.endsWith("\"") && part.length() >= 2) {
+      part = part.substring(1, part.length() - 1);
     }
+    part.toLowerCase();
+    if (part.indexOf("on") != -1) return 1;
+    if (part.indexOf("off") != -1) return 0;
+    if (part.indexOf("true") != -1) return 1;
+    if (part.indexOf("false") != -1) return 0;
+    if (part == "1") return 1;
+    if (part == "0") return 0;
+    return -1;
+  };
+
+  // If topic specifically addresses pump or light, use the payload directly
+  String top = String(topic);
+  if (top.endsWith("/pump")) {
+    int v = parseBoolValueAfter(msg, "pump");
+    if (v == -1) v = parseBoolValueAfter(msg, ""); // fallback: try whole payload
+    if (v == 1) setPump(true);
+    else if (v == 0) setPump(false);
+    return;
+  }
+  if (top.endsWith("/light")) {
+    int v = parseBoolValueAfter(msg, "light");
+    if (v == -1) v = parseBoolValueAfter(msg, "");
+    if (v == 1) setLight(true);
+    else if (v == 0) setLight(false);
+    return;
   }
 
-  // Check for light command
-  int lightIndex = message.indexOf("\"light\"");
-  if (lightIndex != -1) {
-    int colonIndex = message.indexOf(":", lightIndex);
-    if (colonIndex != -1) {
-      int valueStart = message.indexOf("true", colonIndex);
-      if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
-        lightState = true;
-        digitalWrite(RELAY_LIGHT_PIN, LOW); // Relay ON
-      } else {
-        int valueStart = message.indexOf("false", colonIndex);
-        if (valueStart != -1 && valueStart < message.indexOf(",", colonIndex)) {
-          lightState = false;
-          digitalWrite(RELAY_LIGHT_PIN, HIGH); // Relay OFF
-        }
-      }
-    }
+  // Generic command topic: check for keywords
+  if (msg.indexOf("pump") != -1) {
+    int v = parseBoolValueAfter(msg, "pump");
+    if (v == 1) setPump(true);
+    else if (v == 0) setPump(false);
   }
 
-  Serial.print("Pump: ");
-  Serial.print(pumpState ? "ON" : "OFF");
-  Serial.print(", Light: ");
-  Serial.println(lightState ? "ON" : "OFF");
+  if (msg.indexOf("light") != -1) {
+    int v = parseBoolValueAfter(msg, "light");
+    if (v == 1) setLight(true);
+    else if (v == 0) setLight(false);
+  }
 }
 
 void readSensors() {
-  // Read DHT22
-  temperature = dht.readTemperature();
-  humidity = dht.readHumidity();
-
-  // Check if readings are valid
-  if (isnan(temperature) || isnan(humidity)) {
-    Serial.println("Failed to read from DHT sensor!");
-    temperature = 0.0;
-    humidity = 0.0;
+  // Read DHT22 (non-blocking read is limited by library)
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  if (!isnan(t) && !isnan(h)) {
+    temperature = t;
+    humidity = h;
   }
 
-  // Read float switch (LOW when water level is high - adjust logic based on your wiring)
-  // If float switch is normally open: LOW = water high, HIGH = water low
-  // If float switch is normally closed: HIGH = water high, LOW = water low
-  waterLevel = (digitalRead(FLOAT_SWITCH_PIN) == HIGH); // true = water level high (đảo logic)
-
-  Serial.print("Temperature: ");
-  Serial.print(temperature);
-  Serial.print("°C, Humidity: ");
-  Serial.print(humidity);
-  Serial.print("%, Water Level: ");
-  Serial.println(waterLevel ? "HIGH" : "LOW");
+  // Read float switch (adjust logic as needed for your wiring)
+  waterLevel = (digitalRead(FLOAT_SWITCH_PIN) == HIGH);
 }
 
 void publishStatus() {
-  if (!client.connected()) {
-    Serial.println("Cannot publish: MQTT not connected");
-    return;
-  }
+  if (!client.connected()) return;
 
   String statusMessage = "{";
   statusMessage += "\"temp\":" + String(temperature) + ",";
@@ -272,9 +256,7 @@ void publishStatus() {
   statusMessage += "\"light\":" + String(lightState ? "true" : "false");
   statusMessage += "}";
 
-  if (client.publish(MQTT_STATUS_TOPIC, statusMessage.c_str())) {
-    Serial.println("Published status: " + statusMessage);
-  } else {
+  if (!client.publish(MQTT_STATUS_TOPIC, statusMessage.c_str())) {
     Serial.println("Failed to publish status");
   }
 }

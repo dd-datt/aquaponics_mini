@@ -19,7 +19,7 @@ model = Model(inputs=base_model.input, outputs=output)
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 model.fit(train_gen, validation_data=val_gen, epochs=10)
-model.save('saved_model')
+tf.saved_model.save(model, 'saved_model')
 
 # 3. Xuất model sang TFLite
 converter = tf.lite.TFLiteConverter.from_saved_model('saved_model')

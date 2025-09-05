@@ -20,22 +20,29 @@ class _ControlPageState extends State<ControlPage> {
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildControlCard(
-              icon: Icons.water,
-              title: 'Bơm nước',
-              value: pumpOn,
-              color: Colors.blue,
-              onChanged: (v) => setState(() => pumpOn = v),
-            ),
-            SizedBox(height: 16),
-            _buildControlCard(
-              icon: Icons.lightbulb,
-              title: 'Đèn chiếu sáng',
-              value: lightOn,
-              color: Colors.yellow[700]!,
-              onChanged: (v) => setState(() => lightOn = v),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildControlCard(
+                    icon: Icons.water,
+                    title: 'Bơm nước',
+                    value: pumpOn,
+                    color: Colors.blue,
+                    onChanged: (v) => setState(() => pumpOn = v),
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: _buildControlCard(
+                    icon: Icons.lightbulb,
+                    title: 'Đèn chiếu sáng',
+                    value: lightOn,
+                    color: Colors.yellow[700]!,
+                    onChanged: (v) => setState(() => lightOn = v),
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 32),
             ElevatedButton.icon(
