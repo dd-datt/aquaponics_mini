@@ -44,6 +44,14 @@ class MqttService with ChangeNotifier {
     status = 'MQTT đã kết nối';
     debugPrint('MQTT connected!');
     client.subscribe('aquaponics/status', MqttQos.atMostOnce);
+    // Đảm bảo luôn lắng nghe message khi kết nối lại
+    if (client.updates != null && !_connecting) {
+      client.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
+        final recMess = c[0].payload as MqttPublishMessage;
+        final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+        debugPrint('[MQTT DEBUG] Nhận dữ liệu: $pt');
+      });
+    }
     safeNotifyListeners();
   }
 

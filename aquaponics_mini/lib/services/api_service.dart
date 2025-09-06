@@ -6,13 +6,13 @@ class ApiService {
 
   ApiService({required this.baseUrl}) : dio = Dio();
 
-  Future<String> getLastImage() async {
+  Future<Map<String, dynamic>> getLastImage() async {
     final response = await dio.get('$baseUrl/last-image');
-    return response.data['image'] ?? '';
+    return {'image': response.data['image'] ?? '', 'timestamp': response.data['timestamp']};
   }
 
-  Future<String> getLastPrediction() async {
+  Future<Map<String, dynamic>> getLastPrediction() async {
     final response = await dio.get('$baseUrl/last-prediction');
-    return response.data['result'] ?? '';
+    return {'result': response.data['result'] ?? '', 'timestamp': response.data['timestamp']};
   }
 }

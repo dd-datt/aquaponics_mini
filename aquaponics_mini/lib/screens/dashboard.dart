@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // compute
 import 'package:provider/provider.dart';
 import '../services/mqtt_service.dart';
 import '../services/api_service.dart';
 import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:async';
+
+// Giải mã base64 trên isolate để tránh block UI
+Uint8List? _decodeBase64(String s) {
+  try {
+    return base64Decode(s);
+  } catch (_) {
+    return null;
+  }
+}
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -12,105 +22,200 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
-  String status8266 = 'Đang kết nối...';
-  String status32cam = 'Đang kết nối...';
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+  // Auto refresh ảnh
+  Timer? _imageTimer;
+  Duration refreshInterval = const Duration(minutes: 1); // Đổi từ 3 giây thành 1 phút
+  bool autoRefresh = true;
+  bool _fetching = false; // chống chồng lấp fetch
+
+  int? lastImageTimestamp;
+  String status8266 = 'Chưa nhận dữ liệu';
+  String status32cam = 'Chưa nhận dữ liệu';
   String temp = '--';
   String humidity = '--';
   String waterLevel = '--';
-  String imageUrl = '';
   String aiLabel = '';
   bool pumpOn = false;
   bool lightOn = false;
   DateTime? lastLightPress;
   Uint8List? imageBytes;
-  bool isLoadingImage = false;
+  bool isLoadingImage = false; // chỉ spinner lần đầu
+  bool _firstImageLoaded = false; // kiểm soát spinner
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final mqtt = Provider.of<MqttService>(context, listen: false);
       mqtt.connect().then((_) {
         mqtt.listenStatus((msg) {
-          print('[MQTT DEBUG] Nhận dữ liệu: $msg');
+          if (!mounted) return;
+          // Ưu tiên thông báo trạng thái
           if (msg.startsWith('ESP32-CAM:')) {
-            setState(() {
-              status32cam = msg;
-            });
-            if (msg.toLowerCase().contains('ảnh') || msg.toLowerCase().contains('image')) {
-              _fetchImageAndLabel();
-            }
+            setState(() => status32cam = msg);
+            return;
+          }
+          if (msg.startsWith('ESP8266:')) {
+            setState(() => status8266 = msg);
             return;
           }
 
           try {
-            final data = msg.contains('{') ? msg : '{}';
-            final decoded = data.isNotEmpty ? Map<String, dynamic>.from(_parseJson(data)) : {};
-            print('[MQTT DEBUG] Đã parse: $decoded');
-            setState(() {
-              temp = decoded['temp']?.toString() ?? '--';
-              humidity = decoded['humidity']?.toString() ?? '--';
+            final jsonStart = msg.indexOf('{');
+            final data = jsonStart >= 0 ? msg.substring(jsonStart) : '{}';
+            final decoded = jsonDecode(data) as Map<String, dynamic>;
 
-              var waterData = decoded['water'];
-              if (waterData != null) {
-                if (waterData is String) {
-                  waterLevel = waterData;
-                } else if (waterData is bool) {
-                  waterLevel = waterData ? 'FULL' : 'LOW';
-                } else {
-                  waterLevel = waterData.toString();
-                }
-              } else {
-                waterLevel = '--';
-              }
+            // Chỉ setState khi có thay đổi đáng kể để giảm rebuild
+            String newTemp = decoded['temp']?.toString() ?? '--';
+            String newHum = decoded['humidity']?.toString() ?? '--';
+            String newWater;
+            final w = decoded['water'];
+            if (w == null) {
+              newWater = '--';
+            } else if (w is bool) {
+              newWater = w ? 'FULL' : 'LOW';
+            } else {
+              newWater = w.toString();
+            }
 
-              pumpOn = _toBoolDynamic(decoded['pump']);
-              if (lastLightPress == null || DateTime.now().difference(lastLightPress!).inSeconds > 10) {
-                lightOn = _toBoolDynamic(decoded['light']);
-              }
+            bool newPump = _toBoolDynamic(decoded['pump']);
+            bool newLight = lightOn;
+            // Khi người dùng vừa bấm đèn, “khóa” 10s để tránh bị ghi đè bởi MQTT trễ
+            if (lastLightPress == null || DateTime.now().difference(lastLightPress!).inSeconds > 10) {
+              newLight = _toBoolDynamic(decoded['light']);
+            }
 
-              status8266 = 'Hoạt động';
-            });
-          } catch (e) {
-            print('Error parsing MQTT message: $e');
-            if (mounted) {
+            if (newTemp != temp ||
+                newHum != humidity ||
+                newWater != waterLevel ||
+                newPump != pumpOn ||
+                newLight != lightOn ||
+                status8266 != 'Đã nhận dữ liệu') {
               setState(() {
-                status8266 = 'Lỗi dữ liệu';
+                temp = newTemp;
+                humidity = newHum;
+                waterLevel = newWater;
+                pumpOn = newPump;
+                lightOn = newLight;
+                status8266 = 'Đã nhận dữ liệu';
               });
+            }
+          } catch (_) {
+            if (mounted) {
+              setState(() => status8266 = 'Lỗi dữ liệu');
             }
           }
         });
       });
-      _fetchImageAndLabel();
+
+      // Lần đầu tải ảnh
+      _fetchImageAndLabel(initial: true);
+      _startTimerIfNeeded();
     });
   }
 
-  Future<void> _fetchImageAndLabel() async {
-    setState(() => isLoadingImage = true);
-    final api = Provider.of<ApiService>(context, listen: false);
-    final img = await api.getLastImage();
-    final label = await api.getLastPrediction();
-    setState(() {
-      if (img.isNotEmpty) {
-        try {
-          imageBytes = base64Decode(img);
-        } catch (e) {
-          imageBytes = null;
-        }
-      } else {
-        imageBytes = null;
-      }
-      aiLabel = label.isNotEmpty ? label : 'healthy (95%)';
-      isLoadingImage = false;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTimer();
+    super.dispose();
+  }
+
+  // Tạm dừng/tiếp tục refresh khi app vào nền/quay lại
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      _startTimerIfNeeded();
+    } else if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _stopTimer();
+    }
+  }
+
+  void _startTimerIfNeeded() {
+    if (!autoRefresh) return;
+    _imageTimer?.cancel();
+    _imageTimer = Timer.periodic(refreshInterval, (_) {
+      if (mounted) _fetchImageAndLabel();
     });
   }
 
-  dynamic _parseJson(String data) {
+  void _stopTimer() {
+    _imageTimer?.cancel();
+    _imageTimer = null;
+  }
+
+  Future<void> _fetchImageAndLabel({bool initial = false}) async {
+    if (_fetching) return; // tránh gọi chồng
+    _fetching = true;
+
+    if (initial && !_firstImageLoaded) {
+      if (mounted) setState(() => isLoadingImage = true);
+    }
+
     try {
-      return data.isNotEmpty ? jsonDecode(data) : {};
+      final api = Provider.of<ApiService>(context, listen: false);
+
+      // Chạy song song + timeout
+      final results = await Future.wait([
+        api.getLastImage().timeout(const Duration(seconds: 5)),
+        api.getLastPrediction().timeout(const Duration(seconds: 5)),
+      ]);
+
+      if (!mounted) return;
+
+      final imgData = results[0];
+      final labelData = results[1];
+
+      final String img = (imgData['image'] ?? '') as String;
+      final dynamic ts = imgData['timestamp'];
+      final int? newTs = ts is int ? ts : null;
+
+      Uint8List? newBytes;
+      bool shouldUpdateImage = false;
+
+      // Chỉ decode khi timestamp mới
+      if (newTs != null && newTs != lastImageTimestamp && img.isNotEmpty) {
+        // Giải mã trên isolate
+        newBytes = await compute(_decodeBase64, img);
+        if (newBytes != null) {
+          shouldUpdateImage = true;
+        }
+      }
+
+      // Cập nhật label
+      final String newLabel = (labelData['result'] ?? '').toString().trim();
+      final String labelToShow = newLabel.isNotEmpty ? newLabel : 'healthy (95%)';
+
+      // Chỉ setState khi có thay đổi
+      if (shouldUpdateImage || labelToShow != aiLabel || (newTs != null && newTs != lastImageTimestamp)) {
+        setState(() {
+          if (shouldUpdateImage) {
+            imageBytes = newBytes;
+          }
+          aiLabel = labelToShow;
+          lastImageTimestamp = newTs;
+          _firstImageLoaded = true;
+          isLoadingImage = false;
+        });
+      } else if (isLoadingImage) {
+        setState(() {
+          _firstImageLoaded = true;
+          isLoadingImage = false;
+        });
+      }
     } catch (_) {
-      return {};
+      if (mounted && isLoadingImage) {
+        setState(() => isLoadingImage = false);
+      }
+    } finally {
+      _fetching = false;
     }
   }
 
@@ -126,11 +231,17 @@ class _DashboardPageState extends State<DashboardPage> {
     return false;
   }
 
+  String _formatTimestamp(int ts) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final mqtt = Provider.of<MqttService>(context);
     return Scaffold(
-      appBar: AppBar(title: Text('Aquaponics Mini'), backgroundColor: const Color.fromARGB(255, 117, 216, 122)),
+      appBar: AppBar(title: const Text('Aquaponics Mini'), backgroundColor: const Color.fromARGB(255, 117, 216, 122)),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -142,7 +253,7 @@ class _DashboardPageState extends State<DashboardPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ListTile(
                 leading: Icon(_getStatusIcon(status8266), color: Colors.white),
-                title: Text(
+                title: const Text(
                   'ESP8266 (Cảm biến & Điều khiển)',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
@@ -154,15 +265,15 @@ class _DashboardPageState extends State<DashboardPage> {
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ListTile(
-                leading: Icon(Icons.camera_alt, color: Colors.white),
-                title: Text(
+                leading: const Icon(Icons.camera_alt, color: Colors.white),
+                title: const Text(
                   'ESP32-CAM (Camera)',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 subtitle: Text('Trạng thái: $status32cam', style: TextStyle(color: Colors.white.withOpacity(0.9))),
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -171,49 +282,69 @@ class _DashboardPageState extends State<DashboardPage> {
                 _buildWaterLevelChip(),
               ],
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Công tắc Auto refresh ảnh
+            Row(
+              children: [
+                Switch(
+                  value: autoRefresh,
+                  onChanged: (v) {
+                    setState(() => autoRefresh = v);
+                    if (v) {
+                      _startTimerIfNeeded();
+                    } else {
+                      _stopTimer();
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                const Text('Tự động làm mới ảnh (1 phút/lần)'),
+              ],
+            ),
+            const SizedBox(height: 8),
             Card(
               elevation: 3,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                    child: isLoadingImage
-                        ? Container(
-                            height: 120,
-                            width: double.infinity,
-                            color: Colors.grey[200],
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        : imageBytes != null
-                        ? Image.memory(imageBytes!, height: 120, width: double.infinity, fit: BoxFit.cover)
-                        : Image.asset(
-                            'assets/images/esp32cam_placeholder.png',
-                            height: 120,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    child: SizedBox(height: 120, width: double.infinity, child: _buildImageArea()),
                   ),
+                  if (lastImageTimestamp != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4.0, bottom: 2.0),
+                      child: Text(
+                        'Chụp lúc: ${_formatTimestamp(lastImageTimestamp!)}',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                      ),
+                    ),
                   ListTile(
-                    leading: Icon(Icons.label, color: Colors.green),
-                    title: Text('Kết quả AI'),
+                    leading: const Icon(Icons.label, color: Colors.green),
+                    title: const Text('Kết quả AI'),
                     subtitle: Text(aiLabel),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: Icon(Icons.refresh, color: Colors.green),
-                          onPressed: isLoadingImage ? null : _fetchImageAndLabel,
+                          icon: const Icon(Icons.refresh, color: Colors.green),
+                          onPressed: _fetching ? null : () => _fetchImageAndLabel(),
                           tooltip: 'Làm mới ảnh AI',
                         ),
                         IconButton(
-                          icon: Icon(Icons.camera_alt, color: Colors.blue),
-                          onPressed: () {
+                          icon: const Icon(Icons.camera_alt, color: Colors.blue),
+                          onPressed: () async {
+                            // Gửi lệnh chụp ảnh
                             mqtt.publishCameraCmd('{"capture":true}');
                             ScaffoldMessenger.of(
                               context,
-                            ).showSnackBar(SnackBar(content: Text('Đã gửi lệnh chụp ảnh đến ESP32-CAM')));
+                            ).showSnackBar(const SnackBar(content: Text('Đã gửi lệnh chụp ảnh đến ESP32-CAM')));
+
+                            // Đợi 2 giây để ESP32 xử lý và chụp ảnh
+                            await Future.delayed(const Duration(seconds: 2));
+
+                            // Fetch ảnh mới ngay lập tức
+                            _fetchImageAndLabel();
                           },
                           tooltip: 'Chụp ảnh ngay',
                         ),
@@ -223,49 +354,69 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Column(
               children: [
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: pumpOn ? Colors.blue : Colors.grey[300],
                     foregroundColor: Colors.black,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
-                    bool newPumpState = !pumpOn;
+                    final newPumpState = !pumpOn;
                     mqtt.publishCmd('{"pump":$newPumpState,"light":$lightOn}');
                     setState(() => pumpOn = newPumpState);
                   },
-                  icon: Icon(Icons.water),
+                  icon: const Icon(Icons.water),
                   label: Text(pumpOn ? 'Bơm đang bật' : 'Bơm đang tắt'),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: lightOn ? Colors.grey[300] : Colors.yellow[700],
+                    backgroundColor: lightOn ? Colors.yellow[700] : Colors.grey[300],
                     foregroundColor: Colors.black,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () {
-                    bool newLightState = !lightOn;
-                    print('Button đèn pressed, new state: $newLightState');
+                    final newLightState = !lightOn;
+                    final mqtt = Provider.of<MqttService>(context, listen: false);
                     mqtt.publishCmd('{"pump":$pumpOn,"light":$newLightState}');
                     setState(() {
                       lightOn = newLightState;
-                      lastLightPress = DateTime.now();
+                      lastLightPress = DateTime.now(); // khóa ghi đè 10s
                     });
                   },
-                  icon: Icon(Icons.lightbulb),
-                  label: Text(lightOn ? 'Đèn đang tắt' : 'Đèn đang bật'),
+                  icon: const Icon(Icons.lightbulb),
+                  label: Text(lightOn ? 'Đèn đang bật' : 'Đèn đang tắt'),
                 ),
               ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildImageArea() {
+    if (isLoadingImage && !_firstImageLoaded) {
+      return Container(
+        color: Colors.grey[200],
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      child: (imageBytes != null)
+          ? Image.memory(imageBytes!, key: ValueKey<int?>(lastImageTimestamp), fit: BoxFit.cover, gaplessPlayback: true)
+          : Image.asset(
+              'assets/images/esp32cam_placeholder.png',
+              key: const ValueKey<String>('placeholder'),
+              fit: BoxFit.cover,
+            ),
     );
   }
 
@@ -277,21 +428,16 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       label: Text(
         label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 14, // Tăng từ mặc định lên 14
-          fontFamily: 'Roboto',
-        ),
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Roboto'),
       ),
       backgroundColor: Colors.white,
       elevation: 2,
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     );
   }
 
   Color _getStatusColor(String status) {
-    if (status.contains('Hoạt động')) {
+    if (status.contains('Hoạt động') || status.contains('Đã nhận dữ liệu')) {
       return Colors.green[600]!;
     } else if (status.contains('Lỗi')) {
       return Colors.red[600]!;
@@ -303,7 +449,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   IconData _getStatusIcon(String status) {
-    if (status.contains('Hoạt động')) {
+    if (status.contains('Hoạt động') || status.contains('Đã nhận dữ liệu')) {
       return Icons.check_circle;
     } else if (status.contains('Lỗi')) {
       return Icons.error;
@@ -315,11 +461,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   String _getWaterLevelTooltip(String displayText) {
-    if (displayText.contains('Chưa có dữ liệu')) {
+    if (displayText.contains('Chưa có dữ liệu') || displayText == 'NO DATA') {
       return 'Đang chờ dữ liệu từ cảm biến mực nước';
-    } else if (displayText.contains('Nước đầy')) {
+    } else if (displayText.contains('Nước đầy') || displayText == 'FULL') {
       return 'Mức nước an toàn - hệ thống hoạt động bình thường';
-    } else if (displayText.contains('Nước thấp')) {
+    } else if (displayText.contains('Nước thấp') || displayText == 'LOW') {
       return 'Cần thêm nước để tránh hỏng bơm và đảm bảo tưới tiêu';
     } else {
       return 'Trạng thái mực nước: $displayText';
@@ -327,12 +473,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildWaterLevelChip() {
-    // Xác định màu sắc và icon dựa trên trạng thái nước
+    String normalized = waterLevel.toString().toLowerCase().trim();
     Color chipColor;
     IconData waterIcon;
     String displayText;
-
-    String normalized = waterLevel.toString().toLowerCase().trim();
 
     if (normalized == '--' || normalized.isEmpty) {
       chipColor = Colors.grey;
@@ -355,7 +499,6 @@ class _DashboardPageState extends State<DashboardPage> {
       waterIcon = Icons.water_drop_outlined;
       displayText = 'LOW';
     } else {
-      // Tất cả trường hợp không xác định được => hiển thị NO DATA
       chipColor = Colors.grey;
       waterIcon = Icons.help_outline;
       displayText = 'NO DATA';
@@ -364,7 +507,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return Tooltip(
       message: _getWaterLevelTooltip(displayText),
       child: AnimatedContainer(
-        duration: Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 300),
         child: Chip(
           avatar: CircleAvatar(
             backgroundColor: chipColor.withOpacity(0.2),
@@ -379,11 +522,9 @@ class _DashboardPageState extends State<DashboardPage> {
           backgroundColor: Colors.white,
           elevation: 3,
           shadowColor: chipColor.withOpacity(0.3),
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         ),
       ),
     );
   }
 }
-
-// ...existing code...

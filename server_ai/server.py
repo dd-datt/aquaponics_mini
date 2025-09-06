@@ -5,13 +5,16 @@ import base64
 from PIL import Image
 import io
 import os
+import time
 
 app = Flask(__name__)
 interpreter = tf.lite.Interpreter(model_path='model.tflite')
 interpreter.allocate_tensors()
 
+
 last_image = None
 last_prediction = None
+last_timestamp = None
 
 LABELS = ['healthy', 'wilting', 'yellowing']
 
@@ -31,25 +34,26 @@ def predict_image(img_bytes):
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    global last_image, last_prediction
+    global last_image, last_prediction, last_timestamp
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400
     img_bytes = request.files['image'].read()
     last_image = img_bytes
+    last_timestamp = int(time.time())
     label = predict_image(img_bytes)
     last_prediction = label
-    return jsonify({'result': label})
+    return jsonify({'result': label, 'timestamp': last_timestamp})
 
 @app.route('/last-image', methods=['GET'])
 def last_image_api():
     if last_image:
         img_b64 = base64.b64encode(last_image).decode()
-        return jsonify({'image': img_b64})
-    return jsonify({'image': None})
+        return jsonify({'image': img_b64, 'timestamp': last_timestamp})
+    return jsonify({'image': None, 'timestamp': None})
 
 @app.route('/last-prediction', methods=['GET'])
 def last_pred_api():
-    return jsonify({'result': last_prediction})
+    return jsonify({'result': last_prediction, 'timestamp': last_timestamp})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

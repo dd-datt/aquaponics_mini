@@ -14,6 +14,7 @@ dependencies:
   dio: ^5.4.3
   provider: ^6.1.2
   image_picker: ^1.2.0
+  flutter_mjpeg: ^2.0.0
 
 dev_dependencies:
   flutter_test:

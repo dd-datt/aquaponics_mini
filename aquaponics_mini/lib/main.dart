@@ -13,9 +13,9 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => MqttService(broker: 'broker.hivemq.com', clientId: 'aquaponics_mini'),
+          create: (_) => MqttService(broker: 'test.mosquitto.org', clientId: 'aquaponics_mini'),
         ),
-        Provider(create: (_) => ApiService(baseUrl: 'https://20b03eb96ea926.lhr.life')),
+        Provider(create: (_) => ApiService(baseUrl: 'http://192.168.1.124:5001')),
       ],
       child: AquaponicsApp(),
     ),
