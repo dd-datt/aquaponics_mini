@@ -22,6 +22,10 @@ class _DashboardPageState extends State<DashboardPage> {
   String aiLabel = '';
   bool pumpOn = false;
   bool lightOn = false;
+  bool airOn = false;
+  bool pumpRefillOn = false;
+  final int feedAngle = 60;
+  final int feedHoldMs = 700;
   DateTime? lastLightPress;
   Uint8List? imageBytes;
   bool isLoadingImage = false;
@@ -224,42 +228,117 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
             SizedBox(height: 16),
-            Column(
+            Row(
               children: [
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: pumpOn ? Colors.blue : Colors.grey[300],
-                    foregroundColor: Colors.black,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: pumpOn ? Colors.blue : Colors.grey[300],
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      bool newPumpState = !pumpOn;
+                      mqtt.publishCmd(
+                        '{"pump":$newPumpState,"light":$lightOn,"air":$airOn,"pump_refill":$pumpRefillOn}',
+                      );
+                      setState(() => pumpOn = newPumpState);
+                    },
+                    icon: Icon(Icons.water),
+                    label: Text(pumpOn ? 'Bơm lọc bật' : 'Bơm lọc tắt'),
                   ),
-                  onPressed: () {
-                    bool newPumpState = !pumpOn;
-                    mqtt.publishCmd('{"pump":$newPumpState,"light":$lightOn}');
-                    setState(() => pumpOn = newPumpState);
-                  },
-                  icon: Icon(Icons.water),
-                  label: Text(pumpOn ? 'Bơm đang bật' : 'Bơm đang tắt'),
                 ),
-                SizedBox(height: 8),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: lightOn ? Colors.grey[300] : Colors.yellow[700],
-                    foregroundColor: Colors.black,
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: lightOn ? Colors.grey[300] : Colors.yellow[700],
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      bool newLightState = !lightOn;
+                      mqtt.publishCmd(
+                        '{"pump":$pumpOn,"light":$newLightState,"air":$airOn,"pump_refill":$pumpRefillOn}',
+                      );
+                      setState(() {
+                        lightOn = newLightState;
+                        lastLightPress = DateTime.now();
+                      });
+                    },
+                    icon: Icon(Icons.lightbulb),
+                    label: Text(lightOn ? 'Đèn tắt' : 'Đèn bật'),
                   ),
-                  onPressed: () {
-                    bool newLightState = !lightOn;
-                    print('Button đèn pressed, new state: $newLightState');
-                    mqtt.publishCmd('{"pump":$pumpOn,"light":$newLightState}');
-                    setState(() {
-                      lightOn = newLightState;
-                      lastLightPress = DateTime.now();
-                    });
-                  },
-                  icon: Icon(Icons.lightbulb),
-                  label: Text(lightOn ? 'Đèn đang tắt' : 'Đèn đang bật'),
+                ),
+              ],
+            ),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: airOn ? Colors.teal : Colors.grey[300],
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      bool newAirState = !airOn;
+                      mqtt.publishCmd(
+                        '{"pump":$pumpOn,"light":$lightOn,"air":$newAirState,"pump_refill":$pumpRefillOn}',
+                      );
+                      setState(() => airOn = newAirState);
+                    },
+                    icon: Icon(Icons.air),
+                    label: Text(airOn ? 'Sủi khí bật' : 'Sủi khí tắt'),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: pumpRefillOn ? const Color.fromARGB(255, 228, 83, 228) : Colors.grey[300],
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      bool newPumpRefillState = !pumpRefillOn;
+                      mqtt.publishCmd(
+                        '{"pump":$pumpOn,"light":$lightOn,"air":$airOn,"pump_refill":$newPumpRefillState}',
+                      );
+                      setState(() => pumpRefillOn = newPumpRefillState);
+                    },
+                    icon: Icon(Icons.water_drop),
+                    label: Text(pumpRefillOn ? 'Bơm thường bật' : 'Bơm thường tắt'),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 97, 225, 104),
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      final cmd = '{"feed":{"action":"drop","angle":$feedAngle,"hold_ms":$feedHoldMs}}';
+                      mqtt.publishCmd(cmd);
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text('Đã gửi lệnh cho cá ăn: $cmd')));
+                    },
+                    icon: Icon(Icons.restaurant),
+                    label: Text('Cho cá ăn'),
+                  ),
                 ),
               ],
             ),
