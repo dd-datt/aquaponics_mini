@@ -4,8 +4,8 @@
 
 // Pin definitions for ESP8266
 #define DHT_PIN 2          // D4 (GPIO2) - DHT22 data
-#define PUMP_PIN 12        // D6 (GPIO12) - Transistor/MOSFET for pump (3V-5V)
-#define RELAY_LIGHT_PIN 5  // D1 (GPIO5) - Relay IN2 for light (12V), active LOW
+#define PUMP_PIN 14        // D5 (GPIO14) - Relay IN1 for pump
+#define RELAY_LIGHT_PIN 12 // D6 (GPIO12) - Relay IN2 for light
 #define FLOAT_SWITCH_PIN 13 // D7 (GPIO13) - Float switch
 
 // MQTT Configuration
@@ -115,22 +115,24 @@ void loop() {
 }
 
 void setupWiFi() {
-  Serial.print("Connecting to WiFi '");
-  Serial.print(WIFI_SSID);
-  Serial.println("'...");
+  Serial.println("==============================");
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(WIFI_SSID);
+  Serial.println("==============================");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {  // ~10s timeout
     delay(500);
     Serial.print(".");
-    attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected");
-    Serial.print("IP: ");
+    Serial.println("\n==============================");
+    Serial.println("Connected to WiFi!");
+    Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
+    Serial.println("==============================");
   } else {
     Serial.println("\nWiFi connection failed (check credentials)");
   }
