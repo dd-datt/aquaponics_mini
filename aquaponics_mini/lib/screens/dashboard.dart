@@ -13,6 +13,18 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  Color _getStatusColor(String status) {
+    if (status.contains('Hoạt động')) {
+      return Colors.green;
+    } else if (status.contains('Lỗi')) {
+      return Colors.red;
+    } else if (status.contains('Đang kết nối')) {
+      return Colors.orange;
+    } else {
+      return Colors.grey;
+    }
+  }
+
   String status8266 = 'Đang kết nối...';
   String status32cam = 'Đang kết nối...';
   String temp = '--';
@@ -52,6 +64,7 @@ class _DashboardPageState extends State<DashboardPage> {
             final data = msg.contains('{') ? msg : '{}';
             final decoded = data.isNotEmpty ? Map<String, dynamic>.from(_parseJson(data)) : {};
             print('[MQTT DEBUG] Đã parse: $decoded');
+            String prevWaterLevel = waterLevel;
             setState(() {
               temp = decoded['temp']?.toString() ?? '--';
               humidity = decoded['humidity']?.toString() ?? '--';
@@ -76,6 +89,22 @@ class _DashboardPageState extends State<DashboardPage> {
 
               status8266 = 'Hoạt động';
             });
+            // Cute notification when water LOW
+            final normalized = waterLevel.toLowerCase();
+            if ((prevWaterLevel.toLowerCase() != 'low') && (normalized == 'low')) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      '🐟 Trời ơi! Nước sắp hết, mình sẽ bơm cho bạn ngay nè! 💧',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    duration: Duration(seconds: 4),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            }
           } catch (e) {
             print('Error parsing MQTT message: $e');
             if (mounted) {
@@ -324,7 +353,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 97, 225, 104),
+                      backgroundColor: const Color.fromARGB(255, 71, 181, 76),
                       foregroundColor: Colors.black,
                       padding: EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -334,7 +363,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       mqtt.publishCmd(cmd);
                       ScaffoldMessenger.of(
                         context,
-                      ).showSnackBar(SnackBar(content: Text('Đã gửi lệnh cho cá ăn: $cmd')));
+                      ).showSnackBar(const SnackBar(content: Text('Đã gửi lệnh cho cá ăn!')));
                     },
                     icon: Icon(Icons.restaurant),
                     label: Text('Cho cá ăn'),
@@ -356,29 +385,15 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       label: Text(
         label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 14, // Tăng từ mặc định lên 14
-          fontFamily: 'Roboto',
-        ),
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Roboto'),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
       ),
       backgroundColor: Colors.white,
-      elevation: 2,
+      elevation: 3,
+      shadowColor: color.withOpacity(0.3),
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     );
-  }
-
-  Color _getStatusColor(String status) {
-    if (status.contains('Hoạt động')) {
-      return Colors.green[600]!;
-    } else if (status.contains('Lỗi')) {
-      return Colors.red[600]!;
-    } else if (status.contains('Đang kết nối')) {
-      return Colors.orange[600]!;
-    } else {
-      return Colors.grey[600]!;
-    }
   }
 
   IconData _getStatusIcon(String status) {
