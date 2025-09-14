@@ -57,6 +57,11 @@ class _MainNavigationState extends State<MainNavigation> {
             _selectedIndex = index;
           });
         },
+        selectedItemColor: Colors.green[700],
+        unselectedItemColor: Colors.grey[500],
+        selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
+        unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal),
+        type: BottomNavigationBarType.fixed,
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Tổng quan'),
           BottomNavigationBarItem(icon: Icon(Icons.power), label: 'Điều khiển'),
