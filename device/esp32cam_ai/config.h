@@ -8,14 +8,14 @@
 // #define WIFI_PASSWORD "0123456789"
 
 // Wifi phát từ điện thoại
-#define WIFI_SSID "A1"
+#define WIFI_SSID "B-LINK_5F35"
 #define WIFI_PASSWORD "0123456789"
 
 // Server Configuration
-#define SERVER_URL "https://your-railway-app-url.up.railway.app"  // Railway public URL
+#define SERVER_URL "https://aquaponics-mini.onrender.com"
 
 // MQTT Configuration (optional, for receiving commands)
-#define MQTT_BROKER "test.mosquitto.org"
+#define MQTT_BROKER "broker.hivemq.com"
 #define MQTT_PORT 1883
 #define MQTT_CLIENT_ID "esp32cam_ai"
 #define MQTT_CMD_TOPIC "aquaponics/camera_cmd"

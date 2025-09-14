@@ -92,8 +92,8 @@ bool setupCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   // Frame size and quality
-  config.frame_size = FRAMESIZE_VGA;  // 640x480
-  config.jpeg_quality = 12;           // 0-63, lower number = higher quality
+ config.frame_size = FRAMESIZE_XGA;    // 1024x768
+config.jpeg_quality = 10;             // Chất lượng khá cao, ảnh nét, dung lượng vừa phải
   config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);

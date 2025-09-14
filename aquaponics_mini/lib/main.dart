@@ -15,7 +15,7 @@ void main() {
         ChangeNotifierProvider(
           create: (_) => MqttService(broker: 'broker.hivemq.com', clientId: 'aquaponics_mini'),
         ),
-        Provider(create: (_) => ApiService(baseUrl: 'https://20b03eb96ea926.lhr.life')),
+        Provider(create: (_) => ApiService(baseUrl: 'https://aquaponics-mini.onrender.com')),
       ],
       child: AquaponicsApp(),
     ),
