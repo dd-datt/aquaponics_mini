@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/mqtt_service.dart';
 import 'services/api_service.dart';
-import 'screens/dashboard.dart';
-import 'screens/control_page.dart';
-import 'screens/status_page.dart';
-import 'screens/ai_page.dart';
-import 'screens/settings_page.dart';
+import 'screens/esp8266_page.dart';
+import 'screens/esp32cam_page.dart';
 
 void main() {
   runApp(
@@ -44,7 +41,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-  final List<Widget> _pages = [DashboardPage(), ControlPage(), StatusPage(), AIPage(), SettingsPage()];
+  final List<Widget> _pages = [Esp8266Page(), Esp32CamPage()];
 
   @override
   Widget build(BuildContext context) {
@@ -62,12 +59,9 @@ class _MainNavigationState extends State<MainNavigation> {
         selectedLabelStyle: TextStyle(fontWeight: FontWeight.bold),
         unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal),
         type: BottomNavigationBarType.fixed,
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Tổng quan'),
-          BottomNavigationBarItem(icon: Icon(Icons.power), label: 'Điều khiển'),
-          BottomNavigationBarItem(icon: Icon(Icons.sensors), label: 'Trạng thái'),
-          BottomNavigationBarItem(icon: Icon(Icons.image), label: 'AI & Ảnh'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Cài đặt'),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.memory), label: 'ESP8266'),
+          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'ESP32-CAM'),
         ],
       ),
     );
