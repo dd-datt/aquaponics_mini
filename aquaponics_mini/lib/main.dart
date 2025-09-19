@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/mqtt_service.dart';
 import 'services/api_service.dart';
-import 'screens/esp8266_page.dart';
-import 'screens/esp32cam_page.dart';
+import 'screens/dashboard.dart';
+import 'screens/status_page.dart';
+import 'screens/ai_page.dart';
 
 void main() {
   runApp(
@@ -41,7 +42,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-  final List<Widget> _pages = [Esp8266Page(), Esp32CamPage()];
+  final List<Widget> _pages = [DashboardPage(), StatusPage(), AIPage()];
 
   @override
   Widget build(BuildContext context) {
@@ -60,8 +61,9 @@ class _MainNavigationState extends State<MainNavigation> {
         unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal),
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.memory), label: 'ESP8266'),
-          BottomNavigationBarItem(icon: Icon(Icons.camera_alt), label: 'ESP32-CAM'),
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+          BottomNavigationBarItem(icon: Icon(Icons.info_outline), label: 'Status'),
+          BottomNavigationBarItem(icon: Icon(Icons.smart_toy), label: 'AI'),
         ],
       ),
     );

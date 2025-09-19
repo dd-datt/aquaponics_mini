@@ -129,10 +129,7 @@ class _DashboardPageState extends State<DashboardPage> {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text(
-                      '🐟 Trời ơi! Nước sắp hết, mình sẽ bơm cho bạn ngay nè! 💧',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    content: Text('🐟 Nước sắp hết, đã gửi lệnh bơm nước 💧', style: TextStyle(fontSize: 16)),
                     duration: Duration(seconds: 4),
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -240,17 +237,14 @@ class _DashboardPageState extends State<DashboardPage> {
               color: _getStatusColor(status32cam),
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: const ListTile(
-                leading: Icon(Icons.camera_alt, color: Colors.white),
-                title: Text(
+              child: ListTile(
+                leading: Icon(_getStatusIcon(status32cam), color: Colors.white),
+                title: const Text(
                   'ESP32-CAM (Camera)',
                   style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 ),
+                subtitle: Text('Trạng thái: $status32cam', style: TextStyle(color: Colors.white.withOpacity(0.9))),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 8),
-              child: Text('Trạng thái: $status32cam', style: TextStyle(color: Colors.black.withOpacity(0.6))),
             ),
 
             const SizedBox(height: 8),

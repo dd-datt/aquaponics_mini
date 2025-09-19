@@ -1,8 +1,10 @@
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 class MqttService with ChangeNotifier {
+  Map<String, dynamic>? lastData;
   final String broker;
   final String clientId;
   late MqttServerClient client;
@@ -79,7 +81,19 @@ class MqttService with ChangeNotifier {
       final recMess = c[0].payload as MqttPublishMessage;
       final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
       debugPrint('[MQTT DEBUG] Nhận dữ liệu: $pt');
+      // Lưu lại dữ liệu JSON cuối cùng nếu parse được
+      try {
+        final start = pt.indexOf('{');
+        final end = pt.lastIndexOf('}');
+        if (start != -1 && end != -1 && end > start) {
+          final jsonStr = pt.substring(start, end + 1);
+          lastData = Map<String, dynamic>.from(
+            (jsonStr.isNotEmpty) ? (jsonDecode(jsonStr) as Map<String, dynamic>) : {},
+          );
+        }
+      } catch (_) {}
       onMessage(pt);
+      safeNotifyListeners();
     });
   }
 
