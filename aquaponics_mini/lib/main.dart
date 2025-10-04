@@ -5,6 +5,7 @@ import 'services/api_service.dart';
 import 'screens/dashboard.dart';
 import 'screens/status_page.dart';
 import 'screens/ai_page.dart';
+import 'screens/gemini_ai_page.dart';
 
 void main() {
   runApp(
@@ -42,7 +43,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-  final List<Widget> _pages = [DashboardPage(), StatusPage(), AIPage()];
+  final List<Widget> _pages = [DashboardPage(), StatusPage(), AIPage(), GeminiAIPage()];
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +65,7 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
           BottomNavigationBarItem(icon: Icon(Icons.info_outline), label: 'Status'),
           BottomNavigationBarItem(icon: Icon(Icons.smart_toy), label: 'AI'),
+          BottomNavigationBarItem(icon: Icon(Icons.lightbulb), label: 'Gemini AI'),
         ],
       ),
     );
