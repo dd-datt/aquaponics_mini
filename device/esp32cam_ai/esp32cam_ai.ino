@@ -23,6 +23,9 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// Flash LED pin
+#define FLASH_LED_PIN     4
+
 // MQTT client
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -34,6 +37,10 @@ unsigned long lastReconnectTime = 0;
 void setup() {
   Serial.begin(115200);
   delay(100);
+
+  // Setup flash LED pin
+  pinMode(FLASH_LED_PIN, OUTPUT);
+  digitalWrite(FLASH_LED_PIN, LOW);  // Turn off flash initially
 
   // Initialize camera
   if (!setupCamera()) {
@@ -50,6 +57,19 @@ void setup() {
 }
 
 void loop() {
+  // Maintain WiFi connection
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi disconnected, attempting to reconnect...");
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    delay(5000);  // Wait for reconnection
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("WiFi reconnected");
+      client.publish("aquaponics/status", "ESP32-CAM: WiFi reconnected");
+    } else {
+      Serial.println("WiFi reconnection failed");
+    }
+  }
+
   // Maintain MQTT connection
   if (!client.connected()) {
     if (millis() - lastReconnectTime > RECONNECT_INTERVAL) {
@@ -92,8 +112,8 @@ bool setupCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   // Frame size and quality
- config.frame_size = FRAMESIZE_XGA;    // 1024x768
-config.jpeg_quality = 10;             // Chất lượng khá cao, ảnh nét, dung lượng vừa phải
+  config.frame_size = FRAMESIZE_VGA;    // 640x480 - better for low light
+  config.jpeg_quality = 12;             // Slightly lower quality for better exposure
   config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);
@@ -101,6 +121,31 @@ config.jpeg_quality = 10;             // Chất lượng khá cao, ảnh nét, d
     Serial.printf("Camera init failed with error 0x%x", err);
     return false;
   }
+
+  // Get sensor and adjust settings for better low-light performance
+  sensor_t * s = esp_camera_sensor_get();
+  s->set_brightness(s, 1);     // Increase brightness
+  s->set_contrast(s, 1);       // Increase contrast
+  s->set_saturation(s, 0);     // Neutral saturation
+  s->set_special_effect(s, 0); // No special effects
+  s->set_whitebal(s, 1);       // Enable white balance
+  s->set_awb_gain(s, 1);       // Enable AWB gain
+  s->set_wb_mode(s, 0);        // Auto white balance
+  s->set_exposure_ctrl(s, 1);  // Enable exposure control
+  s->set_aec2(s, 0);           // Disable AEC DSP
+  s->set_ae_level(s, 1);       // Increase exposure level
+  s->set_aec_value(s, 300);    // Set exposure value
+  s->set_gain_ctrl(s, 1);      // Enable gain control
+  s->set_agc_gain(s, 0);       // Set gain to 0 (let AEC handle it)
+  s->set_gainceiling(s, (gainceiling_t)0);  // No gain ceiling
+  s->set_bpc(s, 0);            // Disable black pixel correction
+  s->set_wpc(s, 1);            // Enable white pixel correction
+  s->set_raw_gma(s, 1);        // Enable raw gamma
+  s->set_lenc(s, 1);           // Enable lens correction
+  s->set_hmirror(s, 0);        // Disable horizontal mirror
+  s->set_vflip(s, 0);          // Disable vertical flip
+  s->set_dcw(s, 1);            // Enable downsize EN
+  s->set_colorbar(s, 0);       // Disable color bar
 
   return true;
 }
@@ -168,13 +213,21 @@ void captureAndSendImage() {
     return;
   }
 
+  // Turn on flash for better lighting
+  digitalWrite(FLASH_LED_PIN, HIGH);
+  delay(100);  // Allow flash to stabilize
+
   // Capture image
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("Camera capture failed");
     client.publish("aquaponics/status", "ESP32-CAM: Camera capture failed");
+    digitalWrite(FLASH_LED_PIN, LOW);  // Turn off flash
     return;
   }
+
+  // Turn off flash immediately after capture
+  digitalWrite(FLASH_LED_PIN, LOW);
 
   Serial.printf("Captured image: %d bytes\n", fb->len);
 

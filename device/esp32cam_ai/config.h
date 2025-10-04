@@ -4,12 +4,12 @@
 // WiFi Configuration
 
 // Wifi ở nhà NVĐạt
-// #define WIFI_SSID "B-LINK_5F35"
-// #define WIFI_PASSWORD "0123456789"
-
-// Wifi phát từ điện thoại
 #define WIFI_SSID "B-LINK_5F35"
 #define WIFI_PASSWORD "0123456789"
+
+// // Wifi phát từ điện thoại
+// #define WIFI_SSID "B-LINK_5F35"
+// #define WIFI_PASSWORD "0123456789"
 
 // Server Configuration
 #define SERVER_URL "https://aquaponics-mini.onrender.com"
