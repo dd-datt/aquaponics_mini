@@ -17,7 +17,7 @@
 // MQTT Configuration (optional, for receiving commands)
 #define MQTT_BROKER "broker.hivemq.com"
 #define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "esp32cam_ai"
+#define MQTT_CLIENT_ID "esp32cam_ai_2" // Đảm bảo mỗi thiết bị dùng một client ID khác nhau, ví dụ: "esp32cam_ai_1", "esp32cam_ai_2", ...
 #define MQTT_CMD_TOPIC "aquaponics/camera_cmd"
 
 // Timing
