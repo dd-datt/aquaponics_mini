@@ -8,6 +8,35 @@ class StatusPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mqtt = Provider.of<MqttService>(context);
+    // Lấy dữ liệu từ mqtt.lastData nếu có, fallback nếu không có
+    String temp = '--';
+    String humidity = '--';
+    String waterLevel = '--';
+    if (mqtt.lastData != null) {
+      final data = mqtt.lastData;
+      if (data is Map<String, dynamic>) {
+        temp = data['temp']?.toString() ?? '--';
+        humidity = data['humidity']?.toString() ?? '--';
+        if (data.containsKey('water')) {
+          final waterData = data['water'];
+          if (waterData != null) {
+            if (waterData is bool) {
+              waterLevel = waterData ? 'FULL' : 'LOW';
+            } else if (waterData is String) {
+              final s = waterData.toLowerCase();
+              if (s == 'true')
+                waterLevel = 'FULL';
+              else if (s == 'false')
+                waterLevel = 'LOW';
+              else
+                waterLevel = waterData;
+            } else {
+              waterLevel = waterData.toString();
+            }
+          }
+        }
+      }
+    }
     return Scaffold(
       appBar: AppBar(title: Text('Trạng thái hệ thống'), backgroundColor: Colors.green[700]),
       body: Padding(
@@ -17,21 +46,21 @@ class StatusPage extends StatelessWidget {
             _buildSensorCard(
               icon: Icons.thermostat,
               title: 'Nhiệt độ',
-              value: '28°C',
+              value: temp != '--' ? '$temp°C' : '--',
               color: Colors.orange,
               description: 'Nhiệt độ nước hiện tại',
             ),
             _buildSensorCard(
               icon: Icons.water_drop,
               title: 'Độ ẩm',
-              value: '65%',
+              value: humidity != '--' ? '$humidity%' : '--',
               color: Colors.blue,
               description: 'Độ ẩm không khí',
             ),
             _buildSensorCard(
               icon: Icons.waves,
               title: 'Mức nước',
-              value: 'Đầy',
+              value: waterLevel,
               color: Colors.teal,
               description: 'Mức nước bể',
             ),

@@ -1,21 +1,6 @@
 # Aquaponics Mini - Hệ thống Thông minh Ứng dụng IoT và AI
 
-![Aquaponics Mini](https://via.placeholder.com/150)
-
-## Mục lục
-
-- Giới thiệu
-- Tính năng
-- Cấu trúc dự án
-- Giao thức giao tiếp
-- Thành phần
-- Hướng dẫn cài đặt
-- Kiểm thử
-- Khuyến nghị bảo mật
-- Lộ trình phát triển
-- Ghi chú
-- Tác giả
-- Giấy phép
+![Aquaponics Mini](images_demo/UI_aquaponic.png)
 
 ## Giới thiệu
 
@@ -40,31 +25,6 @@ Hệ thống bao gồm ba thành phần độc lập giao tiếp qua internet:
 
 ## Cấu trúc dự án
 
-```
-aquaponics-mini/
-├─ device/
-│  ├─ esp8266_ctrl/                  # ESP8266: bơm/đèn + cảm biến + cảnh báo tràn
-│  │  ├─ esp8266_ctrl.ino
-│  │  └─ config.h                     # WIFI_SSID, WIFI_PASS, MQTT_HOST, ...
-│  └─ esp32cam_ai/                   # ESP32-CAM: chụp ảnh, gửi server AI
-│     ├─ esp32cam_ai.ino
-│     └─ config.h                     # SERVER_URL, WIFI_*
-├─ server_ai/
-│  ├─ server.py                      # Flask API: /predict /last-image /last-prediction
-│  ├─ requirements.txt
-│  └─ .env.example                   # FLASK_PORT, TOKEN (tùy chọn)
-├─ aquaponics_mini/                  # App Flutter
-│  ├─ pubspec.yaml
-│  └─ lib/
-│     ├─ main.dart
-│     ├─ services/mqtt_service.dart
-│     ├─ services/api_service.dart
-│     └─ screens/dashboard.dart
-└─ docs/
-   ├─ topics_and_api.md             # MQTT topics + REST endpoints
-   └─ wiring.md                     # Sơ đồ đấu nối & chân
-```
-
 ## Giao thức giao tiếp
 
 - **MQTT (ESP8266 ↔ Ứng dụng)**
@@ -82,55 +42,6 @@ aquaponics-mini/
 - **Server Flask (Python)**: Nhận ảnh, chạy mô hình AI (TFLite hoặc mock), lưu và cung cấp ảnh/kết quả; mở public bằng **ngrok**.
 - **Ứng dụng Flutter**: Giao diện điều khiển (bơm/đèn), hiển thị trạng thái, cảnh báo, ảnh và nhãn AI.
 
-## Hướng dẫn cài đặt
-
-### 1. Server AI
-
-```bash
-cd server_ai
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python server.py
-ngrok http 5000  # lấy URL https://xxxxx.ngrok-free.app
-```
-
-- Cập nhật URL ngrok vào `device/esp32cam_ai/config.h` (SERVER_URL) và `app_flutter/lib/services/api_service.dart`.
-
-### 2. Thiết bị
-
-- Mở **Arduino IDE**:
-  - Nạp `device/esp8266_ctrl/esp8266_ctrl.ino` (chỉnh `config.h`: Wi-Fi, MQTT broker).
-  - Nạp `device/esp32cam_ai/esp32cam_ai.ino` (chỉnh `config.h`: Wi-Fi, SERVER_URL).
-- Gợi ý broker demo: `broker.hivemq.com:1883`.
-
-### 3. Ứng dụng Flutter
-
-```bash
-cd app_flutter
-flutter pub get
-flutter run
-```
-
-- Cập nhật `apiBaseUrl` (ngrok) và MQTT host trong `lib/services`.
-
-## Kiểm thử
-
-- Ứng dụng nhận trạng thái qua MQTT và điều khiển bơm/đèn thành công.
-- ESP8266 gửi cảnh báo khi phao khay = HIGH (tràn) hoặc bể = LOW (cạn).
-- ESP32-CAM gửi ảnh → Flask trả nhãn AI; ứng dụng hiển thị ảnh và nhãn từ `/last-image` và `/last-prediction`.
-
-## Khuyến nghị bảo mật
-
-- Sử dụng username/password cho MQTT nếu broker hỗ trợ.
-- Flask sử dụng token đơn giản (header `Authorization: Bearer <TOKEN>`).
-- Hạn chế public URL khi không demo.
-
-## Lộ trình phát triển
-
-- Thay mô hình AI mock bằng TFLite (MobileNetV2/EfficientNet-Lite), tinh chỉnh với dữ liệu từ PlantVillage/PlantDoc.
-- Thêm lưu trữ lịch sử log (SQLite/Firestore).
-- Tách broker riêng (Mosquitto trên VPS) và triển khai Flask lên cloud để chạy 24/7.
-
 ## Ghi chú
 
 - Đây là dự án học thuật/demo. Tham số, thời lượng bơm, ngưỡng cảnh báo cần hiệu chỉnh theo thực tế.
@@ -140,10 +51,6 @@ flutter run
 
 **Đề tài**: Thiết kế mô hình aquaponics mini thông minh ứng dụng IoT và AI trong trồng thủy canh và nuôi cá cảnh.
 
-Dự án này thuộc quyền sở hữu của
-
-- Nguyễn Văn Đạt
-- Lê Thị Kim Duyên
-- Phạm Phương Thảo
-
-## Giấy phép
+- Nguyễn Văn Đạt (Thiết kế giao diện Flutter + Xử lý logic phần cứng)
+- Lê Thị Kim Duyên (Thiết kế kiến trúc hệ thống, luồng sự kiện)
+- Phạm Phương Thảo (Báo cáo, thiết kế sơ đồ mạch)
