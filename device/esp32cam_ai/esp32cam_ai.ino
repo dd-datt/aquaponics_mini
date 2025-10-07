@@ -40,12 +40,14 @@ void setup() {
 
   // Setup flash LED pin
   pinMode(FLASH_LED_PIN, OUTPUT);
-  digitalWrite(FLASH_LED_PIN, LOW);  // Turn off flash initially
+  digitalWrite(FLASH_LED_PIN, LOW);  // Tắt flash khi khởi động
 
   // Initialize camera
   if (!setupCamera()) {
     Serial.println("Camera setup failed!");
-    return;
+    while (true) {
+      delay(1000);
+    }
   }
 
   // Connect to WiFi
@@ -57,16 +59,25 @@ void setup() {
 }
 
 void loop() {
-  // Maintain WiFi connection
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected, attempting to reconnect...");
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    delay(5000);  // Wait for reconnection
+  // Hiển thị trạng thái WiFi liên tục trên Serial
+  static unsigned long lastWiFiStatusPrint = 0;
+  if (millis() - lastWiFiStatusPrint > 2000) {
+    lastWiFiStatusPrint = millis();
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("WiFi reconnected");
-      client.publish("aquaponics/status", "ESP32-CAM: WiFi reconnected");
+      Serial.print("WiFi connected, IP: ");
+      Serial.println(WiFi.localIP());
     } else {
-      Serial.println("WiFi reconnection failed");
+      Serial.println("WiFi disconnected, attempting to reconnect...");
+    }
+  }
+
+  // Tối ưu reconnect WiFi: chỉ thử reconnect mỗi 5 giây, không gọi disconnect, không return
+  static unsigned long lastWiFiReconnect = 0;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (millis() - lastWiFiReconnect > 5000) {
+      lastWiFiReconnect = millis();
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+      Serial.println("WiFi reconnecting...");
     }
   }
 
@@ -112,7 +123,7 @@ bool setupCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   // Frame size and quality
-  config.frame_size = FRAMESIZE_VGA;    // 640x480 - better for low light
+  config.frame_size = FRAMESIZE_UXGA;   // 1600x1200 - tăng độ phân giải
   config.jpeg_quality = 12;             // Slightly lower quality for better exposure
   config.fb_count = 1;
 
@@ -213,21 +224,19 @@ void captureAndSendImage() {
     return;
   }
 
-  // Turn on flash for better lighting
-  digitalWrite(FLASH_LED_PIN, HIGH);
-  delay(100);  // Allow flash to stabilize
+  // Tắt flash khi chụp ảnh
+  digitalWrite(FLASH_LED_PIN, LOW);
 
   // Capture image
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("Camera capture failed");
     client.publish("aquaponics/status", "ESP32-CAM: Camera capture failed");
-    digitalWrite(FLASH_LED_PIN, LOW);  // Turn off flash
-    return;
+  // Không tắt flash khi lỗi
+  return;
   }
 
-  // Turn off flash immediately after capture
-  digitalWrite(FLASH_LED_PIN, LOW);
+  // Không tắt flash sau khi chụp, flash luôn bật
 
   Serial.printf("Captured image: %d bytes\n", fb->len);
 

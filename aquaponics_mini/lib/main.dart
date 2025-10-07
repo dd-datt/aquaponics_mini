@@ -12,7 +12,7 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => MqttService(broker: 'test.mosquitto.org', clientId: 'aquaponics_mini'),
+          create: (_) => MqttService(broker: 'broker.hivemq.com', clientId: 'aquaponics_mini'),
         ),
         Provider(create: (_) => ApiService(baseUrl: 'https://aquaponics-mini.onrender.com')),
       ],
