@@ -46,9 +46,10 @@ class _Esp32CamPageState extends State<Esp32CamPage> {
   Future<void> _fetchImageAndLabel() async {
     setState(() => isLoadingImage = true);
     final api = Provider.of<ApiService>(context, listen: false);
-    final img = await api.getLastImage();
-    final label = await api.getLastPrediction();
+    final imgResponse = await api.getLastImage();
+    final labelResponse = await api.getLastPrediction();
     setState(() {
+      final img = imgResponse['image'] as String? ?? '';
       if (img.isNotEmpty) {
         try {
           imageBytes = base64Decode(img);
@@ -58,6 +59,7 @@ class _Esp32CamPageState extends State<Esp32CamPage> {
       } else {
         imageBytes = null;
       }
+      final label = labelResponse['result'] as String? ?? '';
       aiLabel = label.isNotEmpty ? label : 'healthy (95%)';
       isLoadingImage = false;
     });

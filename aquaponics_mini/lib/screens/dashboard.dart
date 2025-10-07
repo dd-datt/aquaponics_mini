@@ -6,15 +6,6 @@ import '../services/api_service.dart';
 import 'dart:convert';
 import 'dart:async';
 
-// Giải mã base64 trên isolate để tránh block UI
-Uint8List? _decodeBase64(String s) {
-  try {
-    return base64Decode(s);
-  } catch (_) {
-    return null;
-  }
-}
-
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -164,10 +155,11 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _fetchImageAndLabel() async {
     setState(() => isLoadingImage = true);
     final api = Provider.of<ApiService>(context, listen: false);
-    final img = await api.getLastImage();
-    final label = await api.getLastPrediction();
+    final imgResponse = await api.getLastImage();
+    final labelResponse = await api.getLastPrediction();
 
     setState(() {
+      final img = imgResponse['image'] as String? ?? '';
       if (img.isNotEmpty) {
         try {
           imageBytes = base64Decode(img);
@@ -177,6 +169,7 @@ class _DashboardPageState extends State<DashboardPage> {
       } else {
         imageBytes = null;
       }
+      final label = labelResponse['result'] as String? ?? '';
       aiLabel = label.isNotEmpty ? label : 'healthy (95%)';
       isLoadingImage = false;
     });
