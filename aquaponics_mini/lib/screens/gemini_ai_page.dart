@@ -179,7 +179,12 @@ class _GeminiAIPageState extends State<GeminiAIPage> {
                       _loading ? 'Đang xử lý...' : 'Gửi cho AI Gemini',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
-                    onPressed: _loading ? null : () => _askGemini(_controller.text.trim()),
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            FocusScope.of(context).unfocus(); // Hide keyboard
+                            _askGemini(_controller.text.trim());
+                          },
                   ),
                 ),
                 const SizedBox(height: 24),
