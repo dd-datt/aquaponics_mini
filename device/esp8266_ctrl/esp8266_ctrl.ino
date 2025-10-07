@@ -20,15 +20,15 @@
 #define MQTT_CMD_TOPIC "aquaponics/cmd"
 #define MQTT_STATUS_TOPIC "aquaponics/status"
 
-// WiFi Configuration (replace with your credentials)
-#define WIFI_SSID "B-LINK_5F35"
-#define WIFI_PASSWORD "0123456789"
+// WiFi Configuration (có thể thay đổi động qua MQTT)
+String wifiSsid = "B-LINK_5F35";
+String wifiPassword = "0123456789";
 
 // Timing
 #define PUBLISH_INTERVAL 500     // Publish status every 0.5 second
 #define RECONNECT_INTERVAL 5000  // Reconnect MQTT every 5 seconds if disconnected
 #define FEED_HOLD_TIME 700       // Default hold time for servo feeding
-#define FEED_DEFAULT_ANGLE 60    // Default angle for servo feeding
+#define FEED_DEFAULT_ANGLE 180   // Default angle for servo feeding (tối đa)
 
 // DHT sensor
 DHT dht(DHT_PIN, DHT22);
@@ -128,8 +128,8 @@ void handleFeed() {
 // ---------- WiFi & MQTT ----------
 void setupWiFi() {
   Serial.println("==============================");
-  Serial.print("Connecting to WiFi: "); Serial.println(WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi: "); Serial.println(wifiSsid);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -144,6 +144,16 @@ void setupWiFi() {
   } else {
     Serial.println("\nWiFi connection failed (check credentials)");
   }
+}
+
+// Hàm đổi WiFi credentials
+void changeWiFi(const char* ssid, const char* pass) {
+  Serial.println("Changing WiFi credentials...");
+  wifiSsid = String(ssid);
+  wifiPassword = String(pass);
+  WiFi.disconnect();
+  delay(500);
+  setupWiFi();
 }
 
 void reconnectMQTT() {
@@ -204,6 +214,18 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     int holdMs = doc["feed"].containsKey("hold_ms") ? doc["feed"]["hold_ms"] : FEED_HOLD_TIME;
     startFeed(angle, holdMs);
     Serial.println("🍽️ FEED ONLY: Executed");
+  }
+
+  // Nhận lệnh đổi WiFi
+  if (doc.containsKey("wifi")) {
+    const char* ssid = doc["wifi"]["ssid"] | "";
+    const char* pass = doc["wifi"]["pass"] | "";
+    if (strlen(ssid) > 0) {
+      changeWiFi(ssid, pass);
+      Serial.println("✅ WiFi credentials updated via MQTT");
+    } else {
+      Serial.println("❌ WiFi SSID missing in command");
+    }
   }
 
   Serial.println("✅ Command processed - Each device independent");

@@ -1,3 +1,4 @@
+#include <Preferences.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "esp_camera.h"
@@ -28,6 +29,15 @@
 
 // MQTT client
 WiFiClient espClient;
+Preferences preferences;
+  // Đọc SSID/PASSWORD từ flash nếu có
+  preferences.begin("wifi", false);
+  String ssid = preferences.getString("ssid", WIFI_SSID);
+  String pass = preferences.getString("pass", WIFI_PASSWORD);
+  preferences.end();
+  // Gán lại SSID/PASSWORD
+  strcpy(wifi_ssid, ssid.c_str());
+  strcpy(wifi_pass, pass.c_str());
 PubSubClient client(espClient);
 
 // Timing variables
@@ -163,7 +173,10 @@ bool setupCamera() {
 
 void setupWiFi() {
   Serial.println("Connecting to WiFi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(wifi_ssid, wifi_pass);
+// Biến lưu SSID/PASSWORD động
+char wifi_ssid[32] = WIFI_SSID;
+char wifi_pass[64] = WIFI_PASSWORD;
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -214,6 +227,34 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   if (message.indexOf("\"capture\":true") != -1) {
     Serial.println("Received capture command");
     captureAndSendImage();
+    return;
+  }
+
+  // Check for WiFi change command: {"wifi":{"ssid":"...","pass":"..."}}
+  if (message.indexOf("wifi") != -1) {
+    int ssidStart = message.indexOf("\"ssid\":");
+    int passStart = message.indexOf("\"pass\":");
+    if (ssidStart != -1 && passStart != -1) {
+      int ssidQuote1 = message.indexOf('"', ssidStart + 7);
+      int ssidQuote2 = message.indexOf('"', ssidQuote1 + 1);
+      int passQuote1 = message.indexOf('"', passStart + 7);
+      int passQuote2 = message.indexOf('"', passQuote1 + 1);
+      if (ssidQuote1 != -1 && ssidQuote2 != -1 && passQuote1 != -1 && passQuote2 != -1) {
+        String newSsid = message.substring(ssidQuote1 + 1, ssidQuote2);
+        String newPass = message.substring(passQuote1 + 1, passQuote2);
+        Serial.printf("Received WiFi change: SSID=%s, PASS=%s\n", newSsid.c_str(), newPass.c_str());
+        preferences.begin("wifi", false);
+        preferences.putString("ssid", newSsid);
+        preferences.putString("pass", newPass);
+        preferences.end();
+        strcpy(wifi_ssid, newSsid.c_str());
+        strcpy(wifi_pass, newPass.c_str());
+        WiFi.disconnect();
+        delay(500);
+        WiFi.begin(wifi_ssid, wifi_pass);
+        client.publish("aquaponics/status", "ESP32-CAM: WiFi changed, reconnecting...");
+      }
+    }
   }
 }
 
