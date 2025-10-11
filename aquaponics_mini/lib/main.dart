@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'services/mqtt_service.dart';
 import 'services/api_service.dart';
+import 'services/history_service.dart';
 import 'screens/dashboard.dart';
 import 'screens/status_page.dart';
 import 'screens/ai_page.dart';
@@ -16,6 +17,7 @@ void main() {
           create: (_) => MqttService(broker: 'broker.hivemq.com', clientId: 'aquaponics_mini'),
         ),
         Provider(create: (_) => ApiService(baseUrl: 'https://aquaponics-mini.onrender.com')),
+        Provider(create: (_) => HistoryService()),
       ],
       child: AquaponicsApp(),
     ),

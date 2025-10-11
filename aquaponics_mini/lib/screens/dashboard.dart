@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'; // compute
 import 'package:provider/provider.dart';
 import '../services/mqtt_service.dart';
 import '../services/api_service.dart';
+import '../services/history_service.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -64,91 +65,107 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final mqtt = Provider.of<MqttService>(context, listen: false);
-      mqtt.connect().then((_) {
-        mqtt.listenStatus((msg) {
-          // ignore: avoid_print
-          print('[MQTT DEBUG] Nhận dữ liệu: $msg');
 
-          // ESP32-CAM message
-          if (msg.startsWith('ESP32-CAM:')) {
-            final content = msg.substring('ESP32-CAM:'.length).trim();
-            if (mounted) {
-              setState(() {
-                status32cam = content;
-              });
-            }
-            final lower = msg.toLowerCase();
-            if (lower.contains('ảnh') || lower.contains('image')) {
-              _fetchImageAndLabel();
-            }
-            return;
-          }
-
-          // Parse JSON trong chuỗi
-          try {
-            final decoded = Map<String, dynamic>.from(_parseJson(msg));
-            // ignore: avoid_print
-            print('[MQTT DEBUG] Đã parse: $decoded');
-
-            final prevWaterLevel = waterLevel;
-
-            if (mounted) {
-              setState(() {
-                temp = decoded['temp']?.toString() ?? '--';
-                humidity = decoded['humidity']?.toString() ?? '--';
-
-                final waterData = decoded['water'];
-                if (waterData != null) {
-                  if (waterData is bool) {
-                    waterLevel = waterData ? 'FULL' : 'LOW';
-                  } else if (waterData is String) {
-                    final s = waterData.toLowerCase();
-                    if (s == 'true')
-                      waterLevel = 'FULL';
-                    else if (s == 'false')
-                      waterLevel = 'LOW';
-                    else
-                      waterLevel = waterData;
-                  } else {
-                    waterLevel = waterData.toString();
-                  }
-                } else {
-                  waterLevel = '--';
-                }
-
-                // 🔥 CÁC NÚT HOÀN TOÀN ĐỘC LẬP - CHỈ THAY ĐỔI KHI USER BẤM
-                // KHÔNG tự động cập nhật từ MQTT status để tránh xung đột
-                // Mỗi nút chỉ on/off theo lệnh trực tiếp từ user
-
-                // Chỉ hiển thị pump_refill (tự động) từ ESP8266
-                pumpRefillOn = _toBoolDynamic(decoded['pump_refill']);
-                status8266 = 'Hoạt động';
-              });
-            }
-
-            if (prevWaterLevel.toLowerCase() != 'low' && waterLevel.toLowerCase() == 'low') {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('🐟 Nước sắp hết, đã gửi lệnh bơm nước 💧', style: TextStyle(fontSize: 16)),
-                    duration: Duration(seconds: 4),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            }
-          } catch (e) {
-            // ignore: avoid_print
-            print('Error parsing MQTT message: $e');
-            if (mounted) {
-              setState(() => status8266 = 'Lỗi dữ liệu');
-            }
-          }
-        });
-      });
-
-      _fetchImageAndLabel();
+      // Kiểm tra và kết nối MQTT một cách thông minh
+      _initializeMqttConnection(mqtt);
     });
+  }
+
+  Future<void> _initializeMqttConnection(MqttService mqtt) async {
+    // Setup listener trước (luôn cần thiết khi vào trang mới)
+    mqtt.listenStatus((msg) {
+      // ignore: avoid_print
+      print('[MQTT DEBUG] Nhận dữ liệu: $msg');
+
+      // ESP32-CAM message
+      if (msg.startsWith('ESP32-CAM:')) {
+        final content = msg.substring('ESP32-CAM:'.length).trim();
+        if (mounted) {
+          setState(() {
+            status32cam = content;
+          });
+        }
+        final lower = msg.toLowerCase();
+        if (lower.contains('ảnh') || lower.contains('image')) {
+          _fetchImageAndLabel();
+        }
+        return;
+      }
+
+      // Parse JSON trong chuỗi
+      try {
+        final decoded = Map<String, dynamic>.from(_parseJson(msg));
+        // ignore: avoid_print
+        print('[MQTT DEBUG] Đã parse: $decoded');
+
+        final prevWaterLevel = waterLevel;
+
+        if (mounted) {
+          setState(() {
+            temp = decoded['temp']?.toString() ?? '--';
+            humidity = decoded['humidity']?.toString() ?? '--';
+
+            final waterData = decoded['water'];
+            if (waterData != null) {
+              if (waterData is bool) {
+                waterLevel = waterData ? 'FULL' : 'LOW';
+              } else if (waterData is String) {
+                final s = waterData.toLowerCase();
+                if (s == 'true')
+                  waterLevel = 'FULL';
+                else if (s == 'false')
+                  waterLevel = 'LOW';
+                else
+                  waterLevel = waterData;
+              } else {
+                waterLevel = waterData.toString();
+              }
+            } else {
+              waterLevel = '--';
+            }
+
+            // 🔥 CÁC NÚT HOÀN TOÀN ĐỘC LẬP - CHỈ THAY ĐỔI KHI USER BẤM
+            // KHÔNG tự động cập nhật từ MQTT status để tránh xung đột
+            // Mỗi nút chỉ on/off theo lệnh trực tiếp từ user
+
+            // Chỉ hiển thị pump_refill (tự động) từ ESP8266
+            pumpRefillOn = _toBoolDynamic(decoded['pump_refill']);
+            status8266 = 'Hoạt động';
+          });
+        }
+
+        if (prevWaterLevel.toLowerCase() != 'low' && waterLevel.toLowerCase() == 'low') {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('🐟 Nước sắp hết, đã gửi lệnh bơm nước 💧', style: TextStyle(fontSize: 16)),
+                duration: Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        // ignore: avoid_print
+        print('Error parsing MQTT message: $e');
+        if (mounted) {
+          setState(() => status8266 = 'Lỗi dữ liệu');
+        }
+      }
+    });
+
+    // Chỉ connect nếu chưa kết nối
+    if (!mqtt.isConnected && !mqtt.isConnecting) {
+      print('[DASHBOARD] MQTT chưa kết nối, bắt đầu kết nối...');
+      await mqtt.connect();
+    } else if (mqtt.isConnected) {
+      print('[DASHBOARD] MQTT đã kết nối, sử dụng session hiện tại');
+    } else {
+      print('[DASHBOARD] MQTT đang kết nối, chờ...');
+    }
+
+    // Fetch ảnh và AI label
+    _fetchImageAndLabel();
   }
 
   // ---------------- Networking helpers ----------------
@@ -173,6 +190,27 @@ class _DashboardPageState extends State<DashboardPage> {
       aiLabel = label.isNotEmpty ? label : 'healthy (95%)';
       isLoadingImage = false;
     });
+
+    // 🚀 LƯU LỊCH SỬ AI KHI CÓ KẾT QUẢ MỚI
+    if (aiLabel.isNotEmpty) {
+      final historyService = HistoryService();
+      final img = imgResponse['image'] as String? ?? '';
+
+      // Tính confidence từ label nếu có
+      String? confidence;
+      final confidenceMatch = RegExp(r'\((\d+)%\)').firstMatch(aiLabel);
+      if (confidenceMatch != null) {
+        confidence = confidenceMatch.group(1);
+      }
+
+      await historyService.addPredictionResult(
+        result: aiLabel,
+        confidence: confidence,
+        imageBase64: img.isNotEmpty ? img : null,
+      );
+
+      print('📝 Đã lưu kết quả AI vào lịch sử: $aiLabel');
+    }
   }
 
   /// Gửi lệnh đơn giản cho RIÊNG TỪNG thiết bị - KHÔNG ảnh hưởng thiết bị khác
@@ -181,6 +219,30 @@ class _DashboardPageState extends State<DashboardPage> {
     final command = '{"$deviceKey":$value}';
     print('🚀 [INDEPENDENT] Sending: $command (Only affects $deviceKey)');
     mqtt.publishCmd(command);
+  }
+
+  /// Làm mới kết nối MQTT nếu cần
+  Future<void> _refreshMqttConnection() async {
+    final mqtt = Provider.of<MqttService>(context, listen: false);
+    if (!mqtt.isConnected) {
+      setState(() {
+        status8266 = 'Đang kết nối...';
+        status32cam = 'Đang kết nối...';
+      });
+      await mqtt.connect();
+    }
+  }
+
+  /// TEST: Lưu dữ liệu demo vào lịch sử để kiểm tra
+  Future<void> _testSaveHistory() async {
+    final historyService = HistoryService();
+    await historyService.addPredictionResult(result: 'Test: healthy (95%)', confidence: '95');
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('✅ Đã test lưu lịch sử - Kiểm tra trang Status')));
+    }
   }
 
   // ---------------- Utils ----------------
@@ -214,7 +276,43 @@ class _DashboardPageState extends State<DashboardPage> {
     final mqtt = Provider.of<MqttService>(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Aquaponics Mini'), backgroundColor: const Color.fromARGB(255, 117, 216, 122)),
+      appBar: AppBar(
+        title: const Text('Aquaponics Mini'),
+        backgroundColor: const Color.fromARGB(255, 117, 216, 122),
+        actions: [
+          // MQTT Status Indicator
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  mqtt.isConnected
+                      ? Icons.wifi
+                      : mqtt.isConnecting
+                      ? Icons.wifi_off
+                      : Icons.signal_wifi_off,
+                  color: mqtt.isConnected
+                      ? Colors.white
+                      : mqtt.isConnecting
+                      ? Colors.orange
+                      : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  mqtt.isConnected
+                      ? 'MQTT'
+                      : mqtt.isConnecting
+                      ? 'Connecting...'
+                      : 'Offline',
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -297,16 +395,25 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.refresh, color: Colors.green),
-                          onPressed: isLoadingImage ? null : _fetchImageAndLabel,
-                          tooltip: 'Làm mới ảnh AI',
+                          onPressed: isLoadingImage
+                              ? null
+                              : () async {
+                                  await _fetchImageAndLabel();
+                                  await _refreshMqttConnection();
+                                },
+                          tooltip: 'Làm mới ảnh AI & kết nối',
                         ),
                         IconButton(
                           icon: const Icon(Icons.camera_alt, color: Colors.blue),
-                          onPressed: () {
+                          onPressed: () async {
                             mqtt.publishCameraCmd('{"capture":true}');
                             ScaffoldMessenger.of(
                               context,
                             ).showSnackBar(const SnackBar(content: Text('Đã gửi lệnh chụp ảnh đến ESP32-CAM')));
+
+                            // 📷 Đợi 2 giây rồi fetch ảnh và AI để lưu lịch sử
+                            await Future.delayed(const Duration(seconds: 2));
+                            await _fetchImageAndLabel();
                           },
                           tooltip: 'Chụp ảnh ngay',
                         ),
@@ -441,6 +548,27 @@ class _DashboardPageState extends State<DashboardPage> {
                     },
                     icon: const Icon(Icons.restaurant),
                     label: const Text('Cho cá ăn'),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // TEST: History button
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _testSaveHistory,
+                    icon: const Icon(Icons.bug_report),
+                    label: const Text('TEST: Lưu lịch sử'),
                   ),
                 ),
               ],
