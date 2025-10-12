@@ -1,86 +1,110 @@
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-#include <DHT.h>
-#include <Servo.h>
-#include <ArduinoJson.h> // Thêm thư viện ArduinoJson để phân tích JSON dễ dàng hơn
 
-// Pin definitions for ESP8266
+// ========================
+// Khai báo thư viện sử dụng
+// ========================
+#include <ESP8266WiFi.h>         // Kết nối WiFi
+#include <PubSubClient.h>        // Kết nối MQTT
+#include <DHT.h>                 // Đọc cảm biến nhiệt độ/độ ẩm DHT22
+#include <Servo.h>               // Điều khiển servo
+#include <ArduinoJson.h>         // Phân tích cú pháp JSON
+
+
+// ========================
+// Khai báo chân kết nối phần cứng
+// ========================
 #define DHT_PIN 2            // D4 (GPIO2) - DHT22 data
-#define PUMP_PIN 14          // D5 (GPIO14) - Relay IN1 for pump (bơm lọc) - active LOW
-#define RELAY_LIGHT_PIN 12   // D6 (GPIO12) - Relay IN2 for light       - active LOW
-#define AIR_PIN 5            // D1 (GPIO5)  - Relay IN3 for air         - active LOW
-#define PUMP_REFILL_PIN 16   // D0 (GPIO16) - Relay IN4 for pump_refill - active LOW
-#define SERVO_PIN 4          // D2 (GPIO4)  - Servo SG90
-#define FLOAT_SWITCH_PIN 13  // D7 (GPIO13) - Float switch (INPUT_PULLUP)
+#define PUMP_PIN 14          // D5 (GPIO14) - Relay IN1 cho bơm lọc (active LOW)
+#define RELAY_LIGHT_PIN 12   // D6 (GPIO12) - Relay IN2 cho đèn (active LOW)
+#define AIR_PIN 5            // D1 (GPIO5)  - Relay IN3 cho máy sục khí (active LOW)
+#define PUMP_REFILL_PIN 16   // D0 (GPIO16) - Relay IN4 cho bơm nước bổ sung (active LOW)
+#define SERVO_PIN 4          // D2 (GPIO4)  - Servo SG90 cho cho ăn
+#define FLOAT_SWITCH_PIN 13  // D7 (GPIO13) - Công tắc phao (INPUT_PULLUP)
 
-// MQTT Configuration
-#define MQTT_BROKER "broker.hivemq.com"
-#define MQTT_PORT 1883
-#define MQTT_CLIENT_ID "esp8266_aquaponics"
-#define MQTT_CMD_TOPIC "aquaponics/cmd"
-#define MQTT_STATUS_TOPIC "aquaponics/status"
 
-// WiFi Configuration (có thể thay đổi động qua MQTT)
-String wifiSsid = "B-LINK_5F35";
-String wifiPassword = "0123456789";
+// ========================
+// Cấu hình MQTT
+// ========================
+#define MQTT_BROKER "broker.hivemq.com"      // Địa chỉ broker MQTT
+#define MQTT_PORT 1883                       // Cổng MQTT
+#define MQTT_CLIENT_ID "esp8266_aquaponics" // Tên client MQTT
+#define MQTT_CMD_TOPIC "aquaponics/cmd"     // Chủ đề nhận lệnh
+#define MQTT_STATUS_TOPIC "aquaponics/status" // Chủ đề gửi trạng thái
 
-// Timing
-#define PUBLISH_INTERVAL 500     // Publish status every 0.5 second
-#define RECONNECT_INTERVAL 5000  // Reconnect MQTT every 5 seconds if disconnected
-#define FEED_HOLD_TIME 700       // Default hold time for servo feeding
-#define FEED_DEFAULT_ANGLE 180   // Default angle for servo feeding (tối đa)
 
-// DHT sensor
-DHT dht(DHT_PIN, DHT22);
+// ========================
+// Cấu hình WiFi (có thể thay đổi qua MQTT)
+// ========================
+String wifiSsid = "B-LINK_5F35";      // Tên WiFi
+String wifiPassword = "0123456789";   // Mật khẩu WiFi
 
-// MQTT client
-WiFiClient espClient;
-PubSubClient client(espClient);
 
-// State variables (defaults OFF)
-float temperature = 0.0;
-float humidity = 0.0;
-bool waterLevel = false;        // true=FULL (HIGH), false=LOW
-bool pumpState = false;         // OFF by default (bơm lọc)
-bool lightState = false;        // OFF by default
-bool airState = false;          // OFF by default
-bool pumpRefillState = false;   // OFF by default
-Servo feedServo;
-unsigned long lastFeedTime = 0;
-bool feeding = false;
-unsigned long feedStartTime = 0;
-int feedTargetAngle = 0;
-enum FeedState { IDLE, MOVING_TO_ANGLE, HOLDING, RETURNING } feedState = IDLE;
+// ========================
+// Các thông số thời gian
+// ========================
+#define PUBLISH_INTERVAL 500     // Thời gian gửi trạng thái (ms)
+#define RECONNECT_INTERVAL 5000  // Thời gian thử lại kết nối MQTT (ms)
+#define FEED_HOLD_TIME 700       // Thời gian giữ servo khi cho ăn (ms)
+#define FEED_DEFAULT_ANGLE 180   // Góc mặc định của servo khi cho ăn
 
-// Timing variables
-unsigned long lastPublishTime = 0;
-unsigned long lastReconnectTime = 0;
 
-// ---------- Helpers: actuators ----------
+// ========================
+// Biến trạng thái và đối tượng cảm biến
+// ========================
+DHT dht(DHT_PIN, DHT22);                // Đối tượng cảm biến DHT22
+WiFiClient espClient;                   // Đối tượng WiFi
+PubSubClient client(espClient);         // Đối tượng MQTT
+
+// Biến lưu trạng thái hệ thống
+float temperature = 0.0;                // Nhiệt độ
+float humidity = 0.0;                   // Độ ẩm
+bool waterLevel = false;                // Mực nước (true=đầy, false=thiếu)
+bool pumpState = false;                 // Trạng thái bơm lọc
+bool lightState = false;                // Trạng thái đèn
+bool airState = false;                  // Trạng thái máy sục khí
+bool pumpRefillState = false;           // Trạng thái bơm bổ sung nước
+Servo feedServo;                        // Đối tượng servo cho ăn
+unsigned long lastFeedTime = 0;         // Thời gian lần cuối cho ăn
+bool feeding = false;                   // Đang cho ăn hay không
+unsigned long feedStartTime = 0;        // Thời gian bắt đầu cho ăn
+int feedTargetAngle = 0;                // Góc servo khi cho ăn
+enum FeedState { IDLE, MOVING_TO_ANGLE, HOLDING, RETURNING } feedState = IDLE; // Trạng thái cho ăn
+
+// Biến thời gian cho các chức năng
+unsigned long lastPublishTime = 0;      // Thời gian gửi trạng thái lần cuối
+unsigned long lastReconnectTime = 0;    // Thời gian thử lại kết nối lần cuối
+
+// ========================
+// Hàm điều khiển các thiết bị (bơm, đèn, khí, bơm bổ sung, servo)
+// ========================
+// Hàm bật/tắt bơm lọc
 void setPump(bool on) {
   pumpState = on;
   digitalWrite(PUMP_PIN, on ? LOW : HIGH); // Relay active LOW
   Serial.print("Pump "); Serial.println(on ? "ON" : "OFF");
 }
 
+// Hàm bật/tắt đèn
 void setLight(bool on) {
   lightState = on;
   digitalWrite(RELAY_LIGHT_PIN, on ? LOW : HIGH); // Relay active LOW
   Serial.print("Light "); Serial.println(on ? "ON" : "OFF");
 }
 
+// Hàm bật/tắt máy sục khí
 void setAir(bool on) {
   airState = on;
   digitalWrite(AIR_PIN, on ? LOW : HIGH); // Relay active LOW
   Serial.print("Air "); Serial.println(on ? "ON" : "OFF");
 }
 
+// Hàm bật/tắt bơm bổ sung nước
 void setPumpRefill(bool on) {
   pumpRefillState = on;
   digitalWrite(PUMP_REFILL_PIN, on ? LOW : HIGH); // Relay active LOW
   Serial.print("PumpRefill "); Serial.println(on ? "ON" : "OFF");
 }
 
+// Hàm bắt đầu cho ăn bằng servo
 void startFeed(int angle, int holdMs) {
   if (feeding) return;
   feeding = true;
@@ -93,14 +117,14 @@ void startFeed(int angle, int holdMs) {
   Serial.print(", holdMs="); Serial.println(holdMs);
 }
 
-// Non-blocking feed handling
+// Xử lý cho ăn không chặn (non-blocking)
 void handleFeed() {
   if (!feeding) return;
 
   unsigned long currentTime = millis();
   switch (feedState) {
     case MOVING_TO_ANGLE:
-      if (currentTime - feedStartTime >= 400) { // Time to reach angle
+      if (currentTime - feedStartTime >= 400) { // Thời gian di chuyển đến góc cho ăn
         feedState = HOLDING;
         feedStartTime = currentTime;
       }
@@ -113,7 +137,7 @@ void handleFeed() {
       }
       break;
     case RETURNING:
-      if (currentTime - feedStartTime >= 400) { // Time to return to 0
+      if (currentTime - feedStartTime >= 400) { // Thời gian trả về góc 0
         feedServo.detach();
         feeding = false;
         feedState = IDLE;
@@ -125,7 +149,10 @@ void handleFeed() {
   }
 }
 
-// ---------- WiFi & MQTT ----------
+// ========================
+// Các hàm kết nối WiFi & MQTT
+// ========================
+// Hàm kết nối WiFi
 void setupWiFi() {
   Serial.println("==============================");
   Serial.print("Connecting to WiFi: "); Serial.println(wifiSsid);
@@ -146,7 +173,7 @@ void setupWiFi() {
   }
 }
 
-// Hàm đổi WiFi credentials
+// Hàm đổi thông tin WiFi
 void changeWiFi(const char* ssid, const char* pass) {
   Serial.println("Changing WiFi credentials...");
   wifiSsid = String(ssid);
@@ -156,6 +183,7 @@ void changeWiFi(const char* ssid, const char* pass) {
   setupWiFi();
 }
 
+// Hàm kết nối lại MQTT
 void reconnectMQTT() {
   Serial.println("Attempting MQTT connection...");
   String clientId = String(MQTT_CLIENT_ID) + String(random(0xffff), HEX);
@@ -168,21 +196,24 @@ void reconnectMQTT() {
   }
 }
 
-// ---------- MQTT callback (INDEPENDENT BUTTON CONTROL) ----------
+// ========================
+// Hàm xử lý lệnh nhận qua MQTT (callback)
+// ========================
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Nhận và xử lý lệnh từ MQTT
   String msg; msg.reserve(length + 1);
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
   msg.trim();
 
   Serial.print("MQTT msg ["); Serial.print(topic); Serial.print("]: "); Serial.println(msg);
 
-  // Chỉ xử lý JSON messages
+  // Chỉ xử lý các message dạng JSON
   if (!msg.startsWith("{") || !msg.endsWith("}")) {
     Serial.println("❌ Ignoring non-JSON message");
     return;
   }
 
-  // Sử dụng ArduinoJson để phân tích
+  // Phân tích cú pháp JSON
   StaticJsonDocument<200> doc;
   DeserializationError error = deserializeJson(doc, msg);
   if (error) {
@@ -190,7 +221,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // MỖI NÚT 1 CHỨC NĂNG - HOÀN TOÀN ĐỘC LẬP
+  // Xử lý từng chức năng độc lập
   if (doc.containsKey("pump")) {
     bool value = doc["pump"];
     setPump(value);
@@ -231,7 +262,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println("✅ Command processed - Each device independent");
 }
 
-// ---------- Sensors & status ----------
+// ========================
+// Đọc cảm biến và gửi trạng thái lên MQTT
+// ========================
+// Đọc dữ liệu từ cảm biến
 void readSensors() {
   float t = dht.readTemperature();
   float h = dht.readHumidity();
@@ -242,6 +276,7 @@ void readSensors() {
   waterLevel = (digitalRead(FLOAT_SWITCH_PIN) == HIGH);
 }
 
+// Gửi trạng thái hệ thống lên MQTT
 void publishStatus() {
   if (!client.connected()) return;
 
@@ -264,8 +299,11 @@ void publishStatus() {
   }
 }
 
-// ---------- Setup & Loop ----------
+// ========================
+// Hàm khởi tạo (setup) và vòng lặp chính (loop)
+// ========================
 void setup() {
+  // Khởi tạo các chân và đối tượng
   Serial.begin(115200);
   delay(100);
 
@@ -275,7 +313,7 @@ void setup() {
   pinMode(PUMP_REFILL_PIN, OUTPUT);
   pinMode(FLOAT_SWITCH_PIN, INPUT_PULLUP);
 
-  // Ensure outputs are OFF by default
+  // Đảm bảo các thiết bị tắt khi khởi động
   digitalWrite(PUMP_PIN, HIGH);
   digitalWrite(RELAY_LIGHT_PIN, HIGH);
   digitalWrite(AIR_PIN, HIGH);
@@ -288,13 +326,13 @@ void setup() {
 }
 
 void loop() {
-  // Maintain WiFi
+  // Duy trì kết nối WiFi
   if (WiFi.status() != WL_CONNECTED && millis() - lastReconnectTime > RECONNECT_INTERVAL) {
     lastReconnectTime = millis();
     setupWiFi();
   }
 
-  // Maintain MQTT
+  // Duy trì kết nối MQTT
   if (WiFi.status() == WL_CONNECTED && !client.connected() && millis() - lastReconnectTime > RECONNECT_INTERVAL) {
     lastReconnectTime = millis();
     reconnectMQTT();
@@ -302,23 +340,22 @@ void loop() {
     client.loop();
   }
 
-  readSensors();
+  readSensors(); // Đọc cảm biến
   
-  // Điều khiển bơm thường (refill) theo mực nước (tự động)
+  // Điều khiển bơm bổ sung nước tự động theo mực nước
   if (!waterLevel && !pumpRefillState) {
     setPumpRefill(true);
   } else if (waterLevel && pumpRefillState) {
     setPumpRefill(false);
   }
 
-  // Xử lý servo feeding không chặn
-  handleFeed();
+  handleFeed(); // Xử lý servo cho ăn
 
-  // Publish status
+  // Gửi trạng thái lên MQTT
   if (WiFi.status() == WL_CONNECTED && client.connected() && millis() - lastPublishTime > PUBLISH_INTERVAL) {
     publishStatus();
     lastPublishTime = millis();
   }
 
-  delay(50); // Giảm delay để tăng responsiveness
+  delay(50); // Giảm delay để tăng độ phản hồi
 }

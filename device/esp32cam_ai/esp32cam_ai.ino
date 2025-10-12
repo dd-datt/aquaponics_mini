@@ -1,12 +1,17 @@
-#include <Preferences.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include "esp_camera.h"
 
-#include <PubSubClient.h>
-#include "config.h"
+// ========================
+// Khai báo thư viện sử dụng
+// ========================
+#include <Preferences.h>   // Lưu trữ dữ liệu vào flash (EEPROM)
+#include <WiFi.h>          // Kết nối WiFi
+#include <HTTPClient.h>    // Gửi HTTP request
+#include "esp_camera.h"   // Điều khiển camera ESP32-CAM
+#include <PubSubClient.h>  // Kết nối MQTT
+#include "config.h"       // File cấu hình riêng
 
-// Camera pins for ESP32-CAM (AI-Thinker module)
+#// ========================
+#// Khai báo chân kết nối camera ESP32-CAM (AI-Thinker)
+#// ========================
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -24,35 +29,46 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-// Flash LED pin
+
+// Chân điều khiển đèn flash
 #define FLASH_LED_PIN     4
 
-// MQTT client
-WiFiClient espClient;
-Preferences preferences;
-  // Đọc SSID/PASSWORD từ flash nếu có
-  preferences.begin("wifi", false);
-  String ssid = preferences.getString("ssid", WIFI_SSID);
-  String pass = preferences.getString("pass", WIFI_PASSWORD);
-  preferences.end();
-  // Gán lại SSID/PASSWORD
-  strcpy(wifi_ssid, ssid.c_str());
-  strcpy(wifi_pass, pass.c_str());
-PubSubClient client(espClient);
 
-// Timing variables
-unsigned long lastCaptureTime = 0;
-unsigned long lastReconnectTime = 0;
+// ========================
+// Biến toàn cục: MQTT, WiFi, lưu trữ cấu hình
+// ========================
+WiFiClient espClient;           // Đối tượng WiFi
+Preferences preferences;        // Đối tượng lưu trữ cấu hình
+// Đọc SSID/PASSWORD từ flash nếu có
+preferences.begin("wifi", false);
+String ssid = preferences.getString("ssid", WIFI_SSID);
+String pass = preferences.getString("pass", WIFI_PASSWORD);
+preferences.end();
+// Gán lại SSID/PASSWORD cho biến toàn cục
+strcpy(wifi_ssid, ssid.c_str());
+strcpy(wifi_pass, pass.c_str());
+PubSubClient client(espClient); // Đối tượng MQTT
 
+
+// ========================
+// Biến thời gian cho các chức năng
+// ========================
+unsigned long lastCaptureTime = 0;     // Thời gian chụp ảnh lần cuối
+unsigned long lastReconnectTime = 0;   // Thời gian thử lại kết nối MQTT lần cuối
+
+
+// ========================
+// Hàm khởi tạo (setup)
+// ========================
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200);         // Khởi tạo Serial
   delay(100);
 
-  // Setup flash LED pin
+  // Khởi tạo chân đèn flash
   pinMode(FLASH_LED_PIN, OUTPUT);
   digitalWrite(FLASH_LED_PIN, LOW);  // Tắt flash khi khởi động
 
-  // Initialize camera
+  // Khởi tạo camera
   if (!setupCamera()) {
     Serial.println("Camera setup failed!");
     while (true) {
@@ -60,14 +76,18 @@ void setup() {
     }
   }
 
-  // Connect to WiFi
+  // Kết nối WiFi
   setupWiFi();
 
-  // Setup MQTT
+  // Kết nối MQTT
   client.setServer(MQTT_BROKER, MQTT_PORT);
   client.setCallback(mqttCallback);
 }
 
+
+// ========================
+// Vòng lặp chính (loop)
+// ========================
 void loop() {
   // Hiển thị trạng thái WiFi liên tục trên Serial
   static unsigned long lastWiFiStatusPrint = 0;
@@ -81,7 +101,7 @@ void loop() {
     }
   }
 
-  // Tối ưu reconnect WiFi: chỉ thử reconnect mỗi 5 giây, không gọi disconnect, không return
+  // Tối ưu reconnect WiFi: chỉ thử reconnect mỗi 5 giây
   static unsigned long lastWiFiReconnect = 0;
   if (WiFi.status() != WL_CONNECTED) {
     if (millis() - lastWiFiReconnect > 5000) {
@@ -91,7 +111,7 @@ void loop() {
     }
   }
 
-  // Maintain MQTT connection
+  // Duy trì kết nối MQTT
   if (!client.connected()) {
     if (millis() - lastReconnectTime > RECONNECT_INTERVAL) {
       lastReconnectTime = millis();
@@ -100,7 +120,7 @@ void loop() {
   }
   client.loop();
 
-  // Capture and send image periodically
+  // Định kỳ chụp ảnh và gửi lên server
   if (millis() - lastCaptureTime > CAPTURE_INTERVAL) {
     captureAndSendImage();
     lastCaptureTime = millis();
@@ -109,6 +129,10 @@ void loop() {
   delay(100);
 }
 
+
+// ========================
+// Hàm khởi tạo camera và cấu hình cảm biến
+// ========================
 bool setupCamera() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -132,9 +156,9 @@ bool setupCamera() {
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
-  // Frame size and quality
+  // Cấu hình độ phân giải và chất lượng ảnh
   config.frame_size = FRAMESIZE_UXGA;   // 1600x1200 - tăng độ phân giải
-  config.jpeg_quality = 12;             // Slightly lower quality for better exposure
+  config.jpeg_quality = 12;             // Chất lượng ảnh JPEG
   config.fb_count = 1;
 
   esp_err_t err = esp_camera_init(&config);
@@ -143,40 +167,44 @@ bool setupCamera() {
     return false;
   }
 
-  // Get sensor and adjust settings for better low-light performance
+  // Điều chỉnh cảm biến để chụp tốt hơn trong điều kiện thiếu sáng
   sensor_t * s = esp_camera_sensor_get();
-  s->set_brightness(s, 1);     // Increase brightness
-  s->set_contrast(s, 1);       // Increase contrast
-  s->set_saturation(s, 0);     // Neutral saturation
-  s->set_special_effect(s, 0); // No special effects
-  s->set_whitebal(s, 1);       // Enable white balance
-  s->set_awb_gain(s, 1);       // Enable AWB gain
-  s->set_wb_mode(s, 0);        // Auto white balance
-  s->set_exposure_ctrl(s, 1);  // Enable exposure control
-  s->set_aec2(s, 0);           // Disable AEC DSP
-  s->set_ae_level(s, 1);       // Increase exposure level
-  s->set_aec_value(s, 300);    // Set exposure value
-  s->set_gain_ctrl(s, 1);      // Enable gain control
-  s->set_agc_gain(s, 0);       // Set gain to 0 (let AEC handle it)
-  s->set_gainceiling(s, (gainceiling_t)0);  // No gain ceiling
-  s->set_bpc(s, 0);            // Disable black pixel correction
-  s->set_wpc(s, 1);            // Enable white pixel correction
-  s->set_raw_gma(s, 1);        // Enable raw gamma
-  s->set_lenc(s, 1);           // Enable lens correction
-  s->set_hmirror(s, 0);        // Disable horizontal mirror
-  s->set_vflip(s, 0);          // Disable vertical flip
-  s->set_dcw(s, 1);            // Enable downsize EN
-  s->set_colorbar(s, 0);       // Disable color bar
+  s->set_brightness(s, 1);     // Tăng độ sáng
+  s->set_contrast(s, 1);       // Tăng độ tương phản
+  s->set_saturation(s, 0);     // Độ bão hòa trung tính
+  s->set_special_effect(s, 0); // Không hiệu ứng đặc biệt
+  s->set_whitebal(s, 1);       // Bật cân bằng trắng
+  s->set_awb_gain(s, 1);       // Bật AWB gain
+  s->set_wb_mode(s, 0);        // Chế độ cân bằng trắng tự động
+  s->set_exposure_ctrl(s, 1);  // Bật kiểm soát phơi sáng
+  s->set_aec2(s, 0);           // Tắt AEC DSP
+  s->set_ae_level(s, 1);       // Tăng mức phơi sáng
+  s->set_aec_value(s, 300);    // Giá trị phơi sáng
+  s->set_gain_ctrl(s, 1);      // Bật kiểm soát gain
+  s->set_agc_gain(s, 0);       // Để AEC tự xử lý gain
+  s->set_gainceiling(s, (gainceiling_t)0);  // Không giới hạn gain
+  s->set_bpc(s, 0);            // Tắt sửa điểm đen
+  s->set_wpc(s, 1);            // Bật sửa điểm trắng
+  s->set_raw_gma(s, 1);        // Bật raw gamma
+  s->set_lenc(s, 1);           // Bật sửa méo ống kính
+  s->set_hmirror(s, 0);        // Không lật ngang
+  s->set_vflip(s, 0);          // Không lật dọc
+  s->set_dcw(s, 1);            // Bật downsize EN
+  s->set_colorbar(s, 0);       // Tắt color bar
 
   return true;
 }
 
+
+// ========================
+// Hàm kết nối WiFi
+// ========================
 void setupWiFi() {
   Serial.println("Connecting to WiFi...");
   WiFi.begin(wifi_ssid, wifi_pass);
-// Biến lưu SSID/PASSWORD động
-char wifi_ssid[32] = WIFI_SSID;
-char wifi_pass[64] = WIFI_PASSWORD;
+  // Biến lưu SSID/PASSWORD động
+  char wifi_ssid[32] = WIFI_SSID;
+  char wifi_pass[64] = WIFI_PASSWORD;
 
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -190,7 +218,7 @@ char wifi_pass[64] = WIFI_PASSWORD;
     Serial.println("WiFi connected");
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
-    // Publish trạng thái WiFi lên MQTT
+    // Gửi trạng thái WiFi lên MQTT
     client.publish("aquaponics/status", "ESP32-CAM: WiFi connected");
   } else {
     Serial.println("");
@@ -199,6 +227,10 @@ char wifi_pass[64] = WIFI_PASSWORD;
   }
 }
 
+
+// ========================
+// Hàm kết nối lại MQTT
+// ========================
 void reconnectMQTT() {
   Serial.println("Attempting MQTT connection...");
   if (client.connect(MQTT_CLIENT_ID)) {
@@ -212,6 +244,10 @@ void reconnectMQTT() {
   }
 }
 
+
+// ========================
+// Hàm xử lý lệnh nhận qua MQTT (callback)
+// ========================
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -223,14 +259,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println(message);
 
-  // Check for capture command
+  // Kiểm tra lệnh chụp ảnh
   if (message.indexOf("\"capture\":true") != -1) {
     Serial.println("Received capture command");
     captureAndSendImage();
     return;
   }
 
-  // Check for WiFi change command: {"wifi":{"ssid":"...","pass":"..."}}
+  // Kiểm tra lệnh đổi WiFi: {"wifi":{"ssid":"...","pass":"..."}}
   if (message.indexOf("wifi") != -1) {
     int ssidStart = message.indexOf("\"ssid\":");
     int passStart = message.indexOf("\"pass\":");
@@ -258,6 +294,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+
+// ========================
+// Hàm chụp ảnh và gửi lên server AI
+// ========================
 void captureAndSendImage() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Cannot send image: WiFi not connected");
@@ -268,20 +308,20 @@ void captureAndSendImage() {
   // Tắt flash khi chụp ảnh
   digitalWrite(FLASH_LED_PIN, LOW);
 
-  // Capture image
+  // Chụp ảnh
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("Camera capture failed");
     client.publish("aquaponics/status", "ESP32-CAM: Camera capture failed");
-  // Không tắt flash khi lỗi
-  return;
+    // Không tắt flash khi lỗi
+    return;
   }
 
   // Không tắt flash sau khi chụp, flash luôn bật
 
   Serial.printf("Captured image: %d bytes\n", fb->len);
 
-  // Send to server
+  // Gửi ảnh lên server AI
   if (sendImageToServer(fb->buf, fb->len)) {
     Serial.println("Image sent successfully");
     client.publish("aquaponics/status", "ESP32-CAM: Image sent successfully");
@@ -290,10 +330,14 @@ void captureAndSendImage() {
     client.publish("aquaponics/status", "ESP32-CAM: Failed to send image");
   }
 
-  // Return frame buffer
+  // Trả lại bộ nhớ ảnh
   esp_camera_fb_return(fb);
 }
 
+
+// ========================
+// Hàm gửi ảnh lên server AI qua HTTP POST
+// ========================
 bool sendImageToServer(uint8_t *imageData, size_t imageSize) {
   HTTPClient http;
 
@@ -301,7 +345,7 @@ bool sendImageToServer(uint8_t *imageData, size_t imageSize) {
   http.begin(url);
   http.addHeader("Content-Type", "multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW");
 
-  // Create multipart form data
+  // Tạo dữ liệu multipart/form-data
   String boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
   String bodyStart = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"image\"; filename=\"capture.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
   String bodyEnd = "\r\n--" + boundary + "--\r\n";
@@ -313,7 +357,7 @@ bool sendImageToServer(uint8_t *imageData, size_t imageSize) {
     return false;
   }
 
-  // Copy data
+  // Sao chép dữ liệu vào bộ nhớ
   memcpy(multipartData, (uint8_t *)bodyStart.c_str(), bodyStart.length());
   memcpy(multipartData + bodyStart.length(), imageData, imageSize);
   memcpy(multipartData + bodyStart.length() + imageSize, (uint8_t *)bodyEnd.c_str(), bodyEnd.length());
